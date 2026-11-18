@@ -144,7 +144,7 @@ del Mar, tres clases, imparte Roberto Bada). Las diapositivas están en `docs/`
 
 ```bash
 uv sync                          # instala todo, incluido el grupo dev (pytest, ruff, streamlit)
-uv run pytest                    # tests (sin red; 250; de 3 a 34 s según caché de imports)
+uv run pytest                    # tests (sin red; 265; de 3 a 45 s según caché de imports)
 uv run ruff check --fix          # lint (reglas E, W, F, I, UP, B; línea de 100)
 uv run ruff format               # formato
 uv run litmar --help             # CLI
@@ -152,6 +152,7 @@ uv run litmar buscar "posidonia carbon" --fuente openalex,europepmc --desde 2020
 uv run litmar buscar "consulta" -n 10 --guardar biblioteca.json
 uv run litmar exportar biblioteca.json --bibtex refs.bib
 uv run litmar revisar "¿Qué papel tiene la posidonia en el carbono azul?"  # informe + BibTeX citado
+uv run litmar revisar "pregunta" --modo agente --aprobar  # agente, pausa antes de buscar
 uv run litmar ui                 # interfaz web (Streamlit)
 uv run litmar ui --server.headless true --server.port 8599   # sin navegador ni preguntas
 ```
@@ -173,8 +174,14 @@ src/litmar/
   busqueda.py        buscar_en_fuentes(): busca en varias fuentes, junta sin
                      duplicar y recoge errores por fuente. La usan CLI y UI
   cli.py             argparse: buscar (--fuente, --desde, --guardar, --bibtex,
-                     salida en tabla), exportar, revisar (flujo, informe y
-                     BibTeX de lo citado), ui
+                     salida en tabla), exportar, revisar (flujo o agente;
+                     informe y BibTeX de lo citado), ui
+  agente.py          crear_agente(modelo, crear=..., aprobar=...): Deep Agents
+                     con TodoListMiddleware, subagente buscador, InMemorySaver e
+                     interrupt_on; devuelve (agente, RegistroBusquedas)
+  herramientas.py    crear_herramientas(): `buscar_articulos` (una para todas
+                     las fuentes, tope 10, errores como texto) y `listar_fuentes`;
+                     RegistroBusquedas guarda los DOI entregados al modelo
   flujo.py           EstadoRevision (TypedDict), seis nodos de LangGraph,
                      extraer_citas(), decidir() y crear_grafo(modelo, crear=...);
                      verificar_citas comprueba DOI por código y reescribe ≤2
@@ -315,6 +322,22 @@ en `.env.example`.
   automático): hacer push a la rama de un fork ajeno y borrar ficheros de la
   memoria privada del agente. No intentes rodearlo: explica qué querías hacer y
   deja que el usuario decida.
+- **`TodoListMiddleware` en deepagents 0.7**: no se exporta desde `deepagents`;
+  se importa de `langchain.agents.middleware`. Es opt-in desde v0.7: sin pasarlo
+  en `middleware=[...]` el agente no tiene `write_todos` y no planifica.
+- **Human-in-the-loop**: necesita checkpointer (`InMemorySaver()`) y el mismo
+  `thread_id` al reanudar con `Command(resume=...)`. Con el modo `batched`
+  (default), `interrupt.value["action_requests"]` trae varias llamadas y las
+  decisiones van por posición. Los subagentes declarativos heredan
+  `interrupt_on` salvo que declaren el suyo.
+- **Modelos falsos con Deep Agents**: `FakeListChatModel` de esta versión solo
+  acepta `str`, no `AIMessage` con `tool_calls`. Para simular llamadas a
+  herramientas hace falta una subclase de `BaseChatModel` con `_generate` y
+  `bind_tools`; si es Pydantic, declara los atributos que uses como campos.
+- **Deep Agents incluye por defecto herramientas de ficheros y `task`** (el
+  backend por defecto guarda en memoria, no en disco): el system prompt debe
+  decir explícitamente que el informe se devuelva como texto y no se escriba
+  con `write_file`.
 
 ## 10. Cómo trabaja el usuario
 

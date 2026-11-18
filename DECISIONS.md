@@ -166,3 +166,33 @@ válidos con aviso, en lugar de abortar: el usuario conserva lo verificable.
 1 planificación + 6 resúmenes + 1 síntesis + 2 reescrituras = 10 llamadas, el
 límite del `InMemoryRateLimiter` (D-16). `langgraph` pasa de dependencia
 transitiva de `langchain` a dependencia directa en `pyproject.toml`.
+
+### D-19 · Modo agente: herramientas acotadas, registro de DOI y aprobación — 2026-11-18
+Segundo modo de `revisar` con Deep Agents 0.7.39, además del flujo de D-18.
+`herramientas.py` expone una sola `buscar_articulos` para todas las fuentes (más
+`listar_fuentes`) construida por `crear_herramientas(...)`: reutiliza
+`crear_fuente`, acepta id o nombre canónico y lleva el límite de 10 resultados,
+el filtro de fuentes y el de año en el código, no en el prompt. Los fallos se
+devuelven como texto (HTTP → código de estado; `ValueError` propio → mensaje)
+sin URL ni cabeceras, para que el modelo pueda probar otra fuente. El resultado
+se deduplica por DOI antes de entregarlo. Descartado crear una herramienta por
+fuente: no se adapta a las fuentes nuevas que lleguen por PR.
+
+`agente.py` inyecta modelo, fábrica de fuentes y límites en `crear_agente()`,
+igual que D-18, y devuelve `(agente, registro)`. El subagente `buscador` usa las
+mismas herramientas en su propio contexto y se invoca con `task`. La lista de
+tareas es `TodoListMiddleware` de `langchain.agents.middleware` (en deepagents
+0.7 no se exporta desde `deepagents`); es opt-in desde v0.7. El agente no tiene
+herramientas de escritura real ni `execute`: la CLI guarda la respuesta final en
+`informe.md`. Descartado que el agente escriba el fichero con `write_file`: el
+backend por defecto es en memoria y el formato debe ser idéntico al del flujo
+para poder compararlos.
+
+Con `--aprobar` se instala `InMemorySaver` e `interrupt_on` para
+`buscar_articulos`, que el subagente hereda. La CLI muestra la llamada y ofrece
+aprobar / editar (JSON) / rechazar con `Command(resume=...)` y el mismo
+`thread_id`; sin terminal, rechaza. Al terminar, la CLI reutiliza
+`flujo.extraer_citas` y genera el `.bib` solo con los DOI que el registro dice
+que entregaron las herramientas; los inventados se avisan y se excluyen. Así se
+mantiene el principio de D-18: comprobar con código lo que es comprobable, sin
+pedirle al modelo que vigile sus propias citas.

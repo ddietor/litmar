@@ -88,6 +88,10 @@ uv run litmar exportar biblioteca.json --bibtex referencias.bib
 
 # Preguntar al modelo y guardar un informe que solo cita artículos reales
 uv run litmar revisar "¿Qué papel tiene la posidonia en el carbono azul?"
+
+# La misma pregunta con un agente que decide qué buscar, con aprobación
+uv run litmar revisar "¿Qué papel tiene la posidonia en el carbono azul?" \
+    --modo agente --aprobar
 ```
 
 - **Combinar resultados:** si el JSON ya existe, los resultados se combinan con
@@ -190,8 +194,8 @@ resumen = resumir(articulo, "¿Cómo afecta el calentamiento a la posidonia?", m
 ```
 
 Las dependencias son `langchain` (para `init_chat_model`), `langgraph` (para el
-flujo de revisión) y los paquetes de los dos proveedores,
-`langchain-google-genai` y `langchain-anthropic`.
+flujo y el agente), `deepagents` (para el modo agente) y los paquetes de los dos
+proveedores, `langchain-google-genai` y `langchain-anthropic`.
 
 ## Resumen estructurado
 
@@ -305,6 +309,72 @@ resultado = grafo.invoke(
 )
 ```
 
+## Revisión con agente (Deep Agents)
+
+`litmar revisar "pregunta" --modo agente` ejecuta un agente de Deep Agents:
+un grafo de LangGraph en el que el modelo decide cuántas búsquedas hacer y cuándo
+ha terminado. Es más flexible y más caro que el flujo; la misma pregunta se
+puede lanzar en los dos modos para compararlos.
+
+```mermaid
+flowchart TD
+    CLI["litmar revisar --modo agente"] --> T["write_todos · plan"]
+    T --> Sub["task(buscador) · contexto propio"]
+    Sub --> H["buscar_articulos / listar_fuentes"]
+    H --> Reg["RegistroBusquedas · DOI → Artículo"]
+    H -->|"--aprobar"| P["__interrupt__ · tú decides"]
+    P -->|aprobar / editar / rechazar| H
+    Reg --> V["código: extraer_citas vs DOI entregados"]
+    V --> F["informe.md + citas.bib (solo citados válidos)"]
+```
+
+**Herramientas** (`src/litmar/herramientas.py`): una sola `buscar_articulos` para
+todas las fuentes, más `listar_fuentes`. La herramienta reutiliza `crear_fuente`,
+acepta el nombre o el id de la fuente y devuelve título, año, DOI, citas y un
+resumen recortado. Los límites están en el código: **10 resultados como máximo**
+y solo las fuentes indicadas en `--fuente`. Si una fuente falla, devuelve un
+mensaje de error como texto para que el agente pueda probar otra; nunca una
+excepción ni una cabecera con claves. PANGAEA avisa de que devuelve datos, no
+artículos revisados.
+
+**Control** (`src/litmar/agente.py`): `write_todos` para planificar (viene de
+`TodoListMiddleware`, opt-in desde deepagents 0.7), un subagente `buscador` con
+su propio contexto y las mismas herramientas, y `recursion_limit=40`. El agente
+no recibe herramientas de escritura en disco ni de ejecución de código: la
+terminal guarda su respuesta final en `informe.md`.
+
+Con `--aprobar` se instala un checkpointer en memoria y `interrupt_on` para
+`buscar_articulos` (el subagente lo hereda). Antes de cada búsqueda se muestra la
+llamada y se puede responder **a** (aprobar), **e** (editar los argumentos en
+JSON) o **r** (rechazar). Sin terminal, la respuesta por defecto es rechazar.
+
+**Verificación:** al terminar, la CLI extrae los DOI del informe con
+`flujo.extraer_citas` y solo pone en `citas.bib` los que aparecen en el registro
+de herramientas. Si el agente cita un DOI inventado, se avisa por `stderr` y ese
+DOI no entra en el BibTeX. El informe incluye siempre una sección
+`## Lo que no encontré` con los huecos y las fuentes que fallaron.
+
+```bash
+uv run litmar revisar "¿Cómo afecta el calentamiento a Posidonia oceanica?" \
+    --modo agente --fuente openalex,europepmc --aprobar
+```
+
+Desde Python se puede inyectar el modelo y una fábrica de fuentes, sin clave ni
+red:
+
+```python
+from litmar import crear_modelo
+from litmar.agente import crear_agente
+
+agente, registro = crear_agente(crear_modelo(), fuentes=["OpenAlex"])
+resultado = agente.invoke(
+    {"messages": [{"role": "user", "content": "¿Qué papel tiene la posidonia?"}]},
+    config={"recursion_limit": 40},
+)
+print(resultado["messages"][-1].content)
+print(sorted(registro.articulos))  # DOI que vio el agente
+```
+
 ## Fuentes
 
 Todas las fuentes descartan los resultados a los que les falta DOI o autores,
@@ -401,6 +471,8 @@ Los tests no usan la red ni necesitan claves:
   en `tests/datos/`;
 - también cubren los modelos, la deduplicación, los reintentos, la persistencia
   y el flujo de la CLI hasta la exportación BibTeX;
+- las herramientas y el agente se prueban con modelos y fuentes falsos: límites
+  en código, errores como texto, subagente, pausa por aprobación y citas válidas;
 - el resumen estructurado, `crear_modelo()` y el ejemplo se prueban con modelos
   y una fábrica falsos, sin clave ni red;
 - la interfaz web se prueba con `streamlit.testing` y fuentes simuladas.

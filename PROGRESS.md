@@ -13,11 +13,13 @@ _Actualizado: 2026-11-18._
   `feature/2nd-class-development`, que sigue a `origin/feature/2nd-class-development`.
   `gh` no está instalado en esta máquina: no se han podido listar PRs.
 - **Curso**: Clase 1 (*Busca*, 17/11/2026) completa. Clase 2 (*Lee*): hechos los
-  pasos 1-5 del plan (`.env` del LLM, resumen estructurado, modelo intercambiable,
-  ejemplo de resumen y flujo LangGraph con CLI). Siguen pendientes los pasos 6-10.
-- **Calidad**: 250 tests pasan, sin red, en 3-34 s según la caché de importación
-  (la primera carga de LangChain, LangGraph y Pydantic tarda más); `ruff check` y
-  `ruff format --check` en verde.
+  pasos 1-6 y 8 del plan (`.env` del LLM, resumen estructurado, modelo
+  intercambiable, ejemplo, flujo LangGraph con CLI, herramientas y agente con
+  Deep Agents). Siguen pendientes el 7 (votación en clase), el 9 (UI) y el 10
+  (preparación de la Clase 3).
+- **Calidad**: 265 tests pasan, sin red, en 3-42 s según la caché de importación
+  (la primera carga de LangChain, LangGraph, Deep Agents y Pydantic tarda más);
+  `ruff check` y `ruff format --check` en verde.
 - **PRs abiertas**: sin comprobar (no hay `gh`).
 - **Funciona**:
   - modelo `Articulo` y `Biblioteca` (dedup por DOI, BibTeX, CSV, JSON);
@@ -26,7 +28,8 @@ _Actualizado: 2026-11-18._
   - CLI: `litmar buscar "…" --fuente openalex,europepmc --desde 2020 --bibtex
     refs.bib --guardar biblioteca.json`, con salida en tabla; `litmar exportar`;
     `litmar ui`; `litmar revisar "pregunta"` (flujo con seis pasos, informe y
-    BibTeX de lo citado);
+    BibTeX de lo citado) y `litmar revisar "pregunta" --modo agente --aprobar`
+    (agente Deep Agents: tareas, subagente buscador y pausa antes de buscar);
   - interfaz web con Streamlit: búsqueda en varias fuentes, tabla y descargas
     BibTeX/CSV;
   - configuración por `.env` (plantilla en `.env.example`; todo opcional salvo
@@ -39,20 +42,25 @@ _Actualizado: 2026-11-18._
     PMC y resume cada uno; sirve de referencia para la práctica 1;
   - `crear_grafo(modelo, crear=...)` compila el flujo de seis nodos;
     `verificar_citas` detecta DOI inventados con código y reescribe como máximo
-    dos veces; la CLI imprime cada paso y guarda informe y BibTeX de lo citado.
+    dos veces; la CLI imprime cada paso y guarda informe y BibTeX de lo citado;
+  - `herramientas.py` (`buscar_articulos` para todas las fuentes, tope 10,
+    errores como texto, dedup por DOI y `RegistroBusquedas`) y `agente.py`
+    (`crear_agente` con lista de tareas, subagente `buscador` e
+    `interrupt_on` opcional). Ambos modos escriben el mismo `informe.md` y
+    `citas.bib`; el BibTeX solo incluye DOI entregados por las herramientas.
 
 ## Próximos pasos
 
-Por orden de prioridad sugerido; los pasos 1-4 del plan de la Clase 2 ya están hechos.
+Por orden de prioridad sugerido; los pasos 1-6 y 8 del plan de la Clase 2 ya están hechos.
 
 0. [ ] **Comprobar el arnés de memoria**. `SessionStart` **funciona**: el
    18/11/2026, al reanudar la sesión, inyectó el estado de este fichero y de git.
    Falta ver en una sesión real que `Stop` pide anotar el progreso cuando hay
    trabajo sin registrar (los casos se probaron a mano con un repo de prueba).
 1. [ ] **Clase 2**: seguir el «Plan de la Clase 2» (abajo). El usuario pidió los
-   pasos 2, 3, 4 y 5 directamente (ya están hechos, igual que el 1); para los
-   demás, preguntar si se construyen ya o se dejan para clase. Sigue pendiente el
-   paso 6 (herramientas).
+   pasos 2, 3, 4, 5, 6 y 8 directamente (ya están hechos, igual que el 1); para
+   los demás, preguntar si se construyen ya o se dejan para clase. Siguen
+   pendientes el 7 (votación), el 9 (UI) y el 10 (Clase 3).
 2. [ ] **Permisos del JSON**: `Biblioteca.guardar` deja `0600`; aplicar la umask
    con `os.chmod` antes de `os.replace`. Propuesto en la PR #10.
 3. [ ] **Mover el helper `cliente` de `tests/test_fuentes.py` a `conftest.py`**,
@@ -97,23 +105,25 @@ la documentación actual de LangChain, LangGraph y deepagents antes de programar
    guarda el informe y el BibTeX de lo citado. Primero plan y diagrama Mermaid.
    Hecho: D-18; `langgraph` es dependencia directa; 18 tests nuevos (14 de flujo
    y 4 de CLI). Sin probar con modelo real ni red: solo dobles.
-6. [ ] **Herramientas** (`src/litmar/herramientas.py`): `buscar_articulos(consulta,
+6. [x] **Herramientas** (`src/litmar/herramientas.py`): `buscar_articulos(consulta,
    fuente, n)` (reutiliza `crear_fuente`) y `listar_fuentes` (usa
    `fuentes_disponibles`), con `@tool` de LangChain. Máximo 10 en el código;
    errores como mensaje; devuelven título, año, DOI, citas y resumen recortado;
    docstrings pensados para el modelo; avisar de que PANGAEA da datos, no
-   artículos. Tests sin red.
+   artículos. Tests sin red. Hecho: D-19; 7 tests nuevos.
 7. [ ] **Votación en clase** (una de tres): Zotero por MCP
    (`github.com/Sapere-IA/zotero-mcp`, solo herramientas de lectura, arranque en
    el `.env`; el MCP solo para PDFs y notas, sin duplicar la búsqueda), Semantic
    Scholar como herramienta de citas, o una fuente de CSV/BD local del grupo.
-8. [ ] **Agente con Deep Agents**: `litmar revisar … --modo agente` con
+8. [x] **Agente con Deep Agents**: `litmar revisar … --modo agente` con
    `create_deep_agent` y `herramientas.py`; instrucciones: planificar con lista
    de tareas, buscar en varias fuentes, citar solo DOIs que den las herramientas
    y decir lo que no encontró. Mismo formato de informe y BibTeX que el flujo.
    Subagente buscador. `--aprobar` con `interrupt_on` para pedir permiso antes de
-   buscar. Límite de pasos (si se alcanza, escribir hasta dónde llegó) con test de
-   modelo falso.
+   buscar. Hecho: D-19; 15 tests nuevos (7 de herramientas, 4 de agente y 4 de
+   CLI). Queda una mejora: `recursion_limit=40` está en la config y se comprueba
+   en un test, pero falta un test que alcance el límite y escriba en `informe.md`
+   hasta dónde se llegó (diapositiva 42).
 9. [ ] **Pestaña «Revisión» en la UI**: pregunta, modo flujo/agente, fuentes y
    número de artículos; pasos en vivo; informe con los DOI como enlaces; mensaje
    claro si falta la clave. Reutilizar las funciones de revisión (refactor
@@ -144,6 +154,55 @@ contra esto.
   proponer su hook `_antes_de_peticion` en `Fuente`.
 
 ## Registro de sesiones
+
+### 2026-11-18 — Sesión 8: herramientas y agente con Deep Agents (Clase 2, pasos 6 y 8)
+
+- El usuario pidió literalmente el encargo de la diapositiva 36: agente revisor
+  con Deep Agents que use `herramientas.py`, como segundo modo de `litmar revisar
+  (--modo agente)`, con planificación, búsqueda en varias fuentes, citas solo de
+  DOI entregados por herramientas, sección de lo no encontrado, subagente
+  buscador, `--aprobar` y mismo formato que el flujo. Pidió además consultar la
+  documentación actual. Se presentó **plan y diagrama Mermaid** antes del
+  código; respondió «adelante» sin cambios.
+- Consultada la doc actual de Deep Agents (overview, HITL y referencia de
+  `create_deep_agent`) y leídas las diapositivas 28 y 34-39. Versión instalada:
+  `deepagents==0.7.39` (`uv add deepagents`). Hallazgos que condicionaron el
+  código: `TodoListMiddleware` se importa de `langchain.agents.middleware` (no de
+  `deepagents`) y es opt-in desde v0.7; `SubAgent` se invoca con `task` y hereda
+  `interrupt_on`; HITL necesita checkpointer y reanudarse con el mismo
+  `thread_id`. Verificado con un modelo falso que el subagente en efecto pide
+  aprobación.
+- `src/litmar/herramientas.py` nuevo: `crear_herramientas(...)` construye
+  `buscar_articulos` y `listar_fuentes` con `@tool`; reutiliza `crear_fuente`,
+  acepta id o nombre canónico, aplica `--fuente`, `--desde` y el tope de 10 en
+  código, deduplica por DOI antes de mostrar los resultados y devuelve errores
+  como texto sin URL ni cabeceras. `RegistroBusquedas` guarda los DOI entregados,
+  las llamadas y los avisos. Aviso de PANGAEA en los docstrings (D-19).
+- `src/litmar/agente.py` nuevo: `crear_agente(modelo, crear=..., fuentes=..., n=...,
+  desde=..., aprobar=..., registro=...)` → `(agente, registro)`. System prompt
+  con las seis instrucciones, `TodoListMiddleware`, `SubAgent("buscador")`,
+  `InMemorySaver` e `interrupt_on={"buscar_articulos": True}` solo con
+  `--aprobar`. El agente no escribe ficheros ni ejecuta código: la CLI guarda su
+  respuesta final.
+- CLI: `--modo agente` ya funciona y `--aprobar` solo se admite con ese modo.
+  La CLI muestra tareas, `task(buscador)` y llamadas a herramientas en vivo;
+  si aparece `__interrupt__`, imprime la llamada y ofrece aprobar/editar
+  (argumentos JSON)/rechazar con `Command(resume=...)` y el mismo `thread_id`;
+  sin terminal rechaza. Al terminar reutiliza `extraer_citas` y exporta el BibTeX
+  solo de los DOI del registro; los inventados se avisan por `stderr`. Refactor
+  mínimo: `_guardar_revision()` comparten ambos modos.
+- Tests: `tests/test_herramientas.py` (7), `tests/test_agente.py` (4) y 4 nuevos
+  en `test_cli.py` (el antiguo test de rechazo del modo agente desaparece).
+  Modelo falso con `BaseChatModel` + `_generate`/`bind_tools`: `FakeListChatModel`
+  de esta versión no acepta `AIMessage` con `tool_calls`. 265 tests en verde;
+  `ruff check` y `ruff format --check` en verde.
+- Documentación: README con diagrama del agente, herramientas, aprobación y
+  verificación; `DECISIONS.md` D-19; `AGENTS.md` (estructura, comandos y cuatro
+  trampas nuevas). Sin commit ni push; rama `feature/2nd-class-development`.
+- Queda pendiente probar ambos modos con clave real y red (una llamada manual a
+  OpenAlex desde un experimento devolvió artículos, pero no se ha ejecutado
+  `revisar` con un LLM real). Tampoco hay todavía test del límite de pasos
+  alcanzado; ni la pestaña «Revisión» de la UI (paso 9).
 
 ### 2026-11-18 — Sesión 7: flujo LangGraph y comando `litmar revisar` (Clase 2, paso 5)
 

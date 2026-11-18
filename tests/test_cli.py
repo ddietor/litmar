@@ -3,11 +3,14 @@ from pathlib import Path
 
 import httpx
 import pytest
+from langchain_core.messages import AIMessage
 
 from litmar import Biblioteca
+from litmar.agente import LIMITE_PASOS
 from litmar.cli import main, tabla
 from litmar.flujo import LIMITE_RECURSION
 from litmar.fuentes import Fuente, OpenAlex
+from litmar.herramientas import RegistroBusquedas
 
 
 @pytest.fixture
@@ -340,10 +343,170 @@ def test_revisar_muestra_pasos_y_guarda_informe_y_bibtex(
     assert grafo.config_visto == {"recursion_limit": LIMITE_RECURSION}
 
 
-def test_revisar_rechaza_el_modo_agente(monkeypatch, capsys):
+class AgenteFalso:
+    """Grafo de prueba: emite tareas, una pausa opcional y el informe final."""
+
+    def __init__(self, fragmentos, registro, *, interrumpir=False):
+        self.fragmentos = fragmentos
+        self.registro = registro
+        self.interrumpir = interrumpir
+        self.entradas = []
+        self.config_visto = None
+
+    def stream(self, entrada, *, config, stream_mode):
+        self.entradas.append(entrada)
+        self.config_visto = config
+        assert stream_mode == "updates"
+        if self.interrumpir and len(self.entradas) == 1:
+            yield {"__interrupt__": [IntervaloFalso()]}
+        yield from self.fragmentos
+
+
+class IntervaloFalso:
+    """Sustituto de `Interrupt`: expone solo el valor que lee la CLI."""
+
+    value = {
+        "action_requests": [
+            {
+                "name": "buscar_articulos",
+                "args": {"consulta": "posidonia", "fuente": "openalex", "n": 3},
+            }
+        ]
+    }
+
+
+@pytest.fixture
+def agente_falso(monkeypatch, hacer_articulo):
+    articulo = hacer_articulo(doi="10.1000/revisado", abstract="Resumen.")
+    registro = RegistroBusquedas()
+    registro.registrar({"consulta": "posidonia", "fuente": "OpenAlex"}, [articulo])
+    fragmentos = [
+        {"tools": {"todos": [{"content": "Buscar", "status": "completed"}]}},
+        {
+            "tools": {
+                "messages": [
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "name": "buscar_articulos",
+                                "args": {"consulta": "posidonia", "fuente": "openalex"},
+                                "id": "b1",
+                            }
+                        ],
+                    )
+                ]
+            }
+        },
+        {"model": {"messages": [AIMessage(content=f"Hallazgo [{articulo.doi}].")]}},
+    ]
+    agente = AgenteFalso(fragmentos, registro)
+    monkeypatch.setattr("litmar.cli.crear_modelo", lambda: object())
+    monkeypatch.setattr("litmar.cli.crear_agente", lambda modelo, **kwargs: (agente, registro))
+    return agente, articulo
+
+
+def test_revisar_agente_guarda_informe_y_solo_el_doi_con_respaldo(tmp_path, agente_falso, capsys):
+    agente, articulo = agente_falso
+    informe = tmp_path / "informe.md"
+    bib = tmp_path / "citas.bib"
+
+    codigo = main(
+        [
+            "revisar",
+            "¿Carbono azul?",
+            "--modo",
+            "agente",
+            "--informe",
+            str(informe),
+            "--bibtex",
+            str(bib),
+        ]
+    )
+
+    assert codigo == 0
+    salida = capsys.readouterr()
+    assert "> tarea           [completed] Buscar" in salida.out
+    assert "→ buscar_articulos(" in salida.out
+    assert informe.read_text(encoding="utf-8") == f"Hallazgo [{articulo.doi}]."
+    texto_bib = bib.read_text(encoding="utf-8")
+    assert articulo.doi in texto_bib
+    assert "1 citas válidas" in salida.out
+    assert agente.config_visto["recursion_limit"] == LIMITE_PASOS
+    assert agente.config_visto["configurable"]["thread_id"]
+
+
+def test_revisar_agente_avisa_de_citas_sin_respaldo(tmp_path, agente_falso, capsys, hacer_articulo):
+    agente, articulo = agente_falso
+    inventado = "10.9999/falso"
+    agente.fragmentos[-1]["model"]["messages"][0] = AIMessage(
+        content=f"Real [{articulo.doi}] e inventado [{inventado}]."
+    )
+
+    assert (
+        main(
+            [
+                "revisar",
+                "p",
+                "--modo",
+                "agente",
+                "--informe",
+                str(tmp_path / "i.md"),
+                "--bibtex",
+                str(tmp_path / "c.bib"),
+            ]
+        )
+        == 0
+    )
+    salida = capsys.readouterr()
+    assert "Citas sin respaldo" in salida.err
+    assert inventado in salida.err
+    assert inventado not in (tmp_path / "c.bib").read_text(encoding="utf-8")
+    assert articulo.doi in (tmp_path / "c.bib").read_text(encoding="utf-8")
+
+
+def test_revisar_agente_aprueba_la_busqueda_editando_los_argumentos(
+    tmp_path, agente_falso, monkeypatch
+):
+    agente, articulo = agente_falso
+    agente.interrumpir = True
+    respuestas = iter(["e", '{"consulta": "posidonia warming", "fuente": "Europe PMC"}'])
+    monkeypatch.setattr("builtins.input", lambda aviso="": next(respuestas))
+
+    assert (
+        main(
+            [
+                "revisar",
+                "p",
+                "--modo",
+                "agente",
+                "--aprobar",
+                "--informe",
+                str(tmp_path / "i.md"),
+                "--bibtex",
+                str(tmp_path / "c.bib"),
+            ]
+        )
+        == 0
+    )
+    assert len(agente.entradas) == 2
+    reanudacion = agente.entradas[1]
+    decisiones = reanudacion.resume["decisions"]
+    assert decisiones == [
+        {
+            "type": "edit",
+            "args": {"consulta": "posidonia warming", "fuente": "Europe PMC"},
+        }
+    ]
+    assert agente.entradas[0]["messages"][0]["content"] == "p"
+    assert agente.entradas[0] != agente.entradas[1]
+    assert (tmp_path / "c.bib").read_text(encoding="utf-8").count(articulo.doi) == 1
+
+
+def test_aprobar_solo_se_usa_con_el_modo_agente(monkeypatch, capsys):
     monkeypatch.setattr("litmar.cli.crear_modelo", lambda: pytest.fail("no debe crear el modelo"))
-    assert main(["revisar", "pregunta", "--modo", "agente"]) == 1
-    assert "modo agente aún no está disponible" in capsys.readouterr().err
+    assert main(["revisar", "pregunta", "--aprobar"]) == 1
+    assert "--aprobar solo se usa con --modo agente" in capsys.readouterr().err
 
 
 def test_revisar_no_permite_el_mismo_archivo_para_informe_y_bibtex(tmp_path, capsys):
