@@ -86,3 +86,15 @@ el nombre estándar de cada proveedor (`GOOGLE_API_KEY`, `ANTHROPIC_API_KEY`),
 que es el que leen las librerías de LangChain. Sustituye a la idea de
 `GEMINI_API_KEY` de la Clase 1. Las diapositivas también nombran
 `CROSSREF_MAILTO`, así que no se renombra a `LITMAR_EMAIL`.
+
+### D-15 · `resumir`: devolución de `None`, campos en español y modelo inyectado — 2026-11-18
+`resumir(articulo, pregunta, modelo)` recibe el chat model como argumento: la
+lógica no elige proveedor, no lee claves y se prueba con un modelo falso. Sin
+resumen (`abstract` vacío o solo espacios) devuelve `None` **antes** de enlazar
+el esquema o invocar el modelo. Descartado: devolver un `ResumenArticulo` con
+campos vacíos (la relevancia tiene que estar entre 1 y 5, y un objeto así
+parecería un resumen real) o lanzar una excepción (la ausencia de resumen es
+normal en varias fuentes). Los campos del esquema Pydantic se llaman `objetivo`,
+`metodo`, `hallazgos`, `relevancia` y `limitaciones`: son los que piden el
+encargo y la diapositiva 11, y forman parte del prompt que lee el modelo. Es una
+excepción puntual a D-2 (atributos en inglés) limitada a este esquema.

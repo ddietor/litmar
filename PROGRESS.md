@@ -8,16 +8,17 @@ el registro solo crece (entradas nuevas arriba).
 
 _Actualizado: 2026-11-18._
 
-- **`main`**: al día con `origin/main`. Último trabajo: la CLI de la demo de la
-  Clase 1 (`--fuente`, `--desde`, `--bibtex`, tabla), ruff, y las diapositivas
-  de la Clase 2 en `docs/Clase2.pdf`.
-- **Curso**: Clase 1 (*Busca*, 17/11/2026) completa respecto a las
-  diapositivas. La siguiente es la Clase 2 (*Lee*), el **18/11/2026**; sus
-  diapositivas están en `docs/Clase2.pdf` y su plan, abajo. **Nada de la Clase 2
-  está empezado.**
-- **Calidad**: 204 tests pasan, sin red, en menos de 1 s; `ruff check` y
+- **`main`**: sin cambios nuevos; el trabajo de esta sesión está sin commitear en
+  `feature/2nd-class-development` (mismo commit de partida que `main` y
+  `upstream/main`). `gh` no está instalado en esta máquina: no se han podido
+  listar PRs.
+- **Curso**: Clase 1 (*Busca*, 17/11/2026) completa. Clase 2 (*Lee*): empezada
+  el 18/11/2026 con el paso 2 del plan (resumen estructurado). Siguen pendientes
+  el paso 1 (variables del LLM y `crear_modelo`) y los pasos 3-10.
+- **Calidad**: 213 tests pasan, sin red, en 3-11 s según la caché de importación
+  (la primera carga de `langchain-core` y Pydantic tarda más); `ruff check` y
   `ruff format --check` en verde.
-- **PRs abiertas**: ninguna.
+- **PRs abiertas**: sin comprobar (no hay `gh`).
 - **Funciona**:
   - modelo `Articulo` y `Biblioteca` (dedup por DOI, BibTeX, CSV, JSON);
   - seis fuentes: OpenAlex, Crossref, Europe PMC, arXiv, PANGAEA, Zotero; todas
@@ -28,22 +29,23 @@ _Actualizado: 2026-11-18._
   - interfaz web con Streamlit: búsqueda en varias fuentes, tabla y descargas
     BibTeX/CSV;
   - configuración por `.env` (plantilla en `.env.example`; todo opcional salvo
-    Zotero).
+    Zotero);
+   - `resumir(articulo, pregunta, modelo)` → `ResumenArticulo` (Pydantic) con
+     `with_structured_output`; sin resumen devuelve `None` sin llamar al modelo.
 
 ## Próximos pasos
 
-Por orden de prioridad sugerido; nada está empezado.
+Por orden de prioridad sugerido; el paso 2 del plan de la Clase 2 ya está hecho.
 
 0. [ ] **Comprobar el arnés de memoria**. `SessionStart` **funciona**: el
    18/11/2026, al reanudar la sesión, inyectó el estado de este fichero y de git.
    Falta ver en una sesión real que `Stop` pide anotar el progreso cuando hay
    trabajo sin registrar (los casos se probaron a mano con un repo de prueba).
-1. [ ] **Clase 2**: seguir el «Plan de la Clase 2» (abajo). **Antes de nada,
-   preguntar al usuario** si quiere construirlo ya (como ensayo, igual que se
-   hizo con la Clase 1 lanzando los prompts de las diapositivas en estas
-   sesiones) o dejarlo para hacerlo en directo en clase. Primer paso en
-   cualquier caso: añadir a `.env.example` `LITMAR_MODELO`, `GOOGLE_API_KEY` y
-   `ANTHROPIC_API_KEY` (D-14).
+1. [ ] **Clase 2**: seguir el «Plan de la Clase 2» (abajo). El usuario pidió el
+   paso 2 directamente (ya está hecho); para los demás, preguntar si se
+   construyen ya o se dejan para clase. Sigue pendiente el paso 1: añadir a
+   `.env.example` `LITMAR_MODELO`, `GOOGLE_API_KEY` y `ANTHROPIC_API_KEY` (D-14)
+   y escribir `crear_modelo()`; `resumir()` ya admite el modelo inyectado.
 2. [ ] **Permisos del JSON**: `Biblioteca.guardar` deja `0600`; aplicar la umask
    con `os.chmod` antes de `os.replace`. Propuesto en la PR #10.
 3. [ ] **Mover el helper `cliente` de `tests/test_fuentes.py` a `conftest.py`**,
@@ -65,7 +67,7 @@ la documentación actual de LangChain, LangGraph y deepagents antes de programar
    + `GOOGLE_API_KEY`, o `anthropic:claude-sonnet-5-5` + `ANTHROPIC_API_KEY`. El
    plan gratuito de Gemini tiene límites por minuto (429) y Google puede usar lo
    enviado: solo datos públicos.
-2. [ ] **Resumen estructurado**: `resumir(articulo, pregunta, modelo)` → objeto
+2. [x] **Resumen estructurado**: `resumir(articulo, pregunta, modelo)` → objeto
    Pydantic `ResumenArticulo` (objetivo, método, hallazgos, relevancia 1-5
    respecto a la pregunta, limitaciones) con `with_structured_output`. Cada
    campo con descripción (el modelo la lee). Sin resumen → no llamar al modelo.
@@ -133,6 +135,30 @@ contra esto.
   proponer su hook `_antes_de_peticion` en `Fuente`.
 
 ## Registro de sesiones
+
+### 2026-11-18 — Sesión 3: resumen estructurado (Clase 2, paso 2)
+
+- El usuario lanzó literalmente el encargo de la diapositiva 11 de
+  `docs/Clase2.pdf`; se leyó esa diapositiva antes de programar (en este entorno
+  el PDF se extrajo con `pypdf`, porque el modelo no puede ver PDFs).
+- `uv add pydantic langchain-core` (pydantic 2.14.3, langchain-core 1.8.2). No se
+  han añadido proveedores ni claves: `resumir` recibe el modelo inyectado.
+- Nuevo `src/litmar/resumen.py`: `ResumenArticulo` con los cinco campos y
+  `Field(description=...)` (la relevancia validada con `ge=1, le=5`), prompt con
+  el título, año, DOI, resumen y pregunta, y `resumir()` con
+  `model.with_structured_output(ResumenArticulo).invoke(...)`. Sin resumen →
+  `None` antes de enlazar el esquema (D-15). Exportado en `litmar.__init__`.
+- `tests/test_resumen.py`: modelo falso que registra esquema, mensajes y
+  llamadas; cubre el objeto devuelto, el contenido del prompt, tres variantes de
+  `abstract` vacío, las descripciones de todos los campos y los extremos de la
+  relevancia. Sin clave ni red. 213 tests en verde; ruff en verde.
+- README: sección «Resumen estructurado» y nota en «Tests». `AGENTS.md`: módulo
+  nuevo y excepción D-2 para los campos del esquema.
+- Comprobación manual con modelo falso: las cinco descripciones llegan al
+  esquema y el mensaje del usuario contiene pregunta, título, año, DOI y texto
+  del resumen. No se ha podido comparar con un modelo real (no hay clave).
+- Sin commit y sin push: el trabajo queda en `feature/2nd-class-development`.
+  `gh` no está instalado, así que no se han revisado PRs.
 
 ### 2026-11-18 — Sesión 2: comprobación de los hooks
 

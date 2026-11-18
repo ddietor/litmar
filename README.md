@@ -158,6 +158,28 @@ El JSON es una lista de artículos con `title`, `authors`, `year`, `doi`,
 de inserción. Al cargar, `abstract` y `citations` son opcionales y toman los
 valores `""` y `0`.
 
+## Resumen estructurado
+
+`resumir(articulo, pregunta, modelo)` le pasa a un modelo de lenguaje el resumen
+de un artículo y la pregunta de investigación, y devuelve un `ResumenArticulo`
+(Pydantic) con `objetivo`, `metodo`, `hallazgos`, `relevancia` (de 1 a 5) y
+`limitaciones`. Cada campo lleva una descripción que el modelo lee como parte
+del prompt, y `relevancia` se valida automáticamente.
+
+```python
+from litmar import resumir
+
+# `modelo` es un chat model de LangChain: se pasa como argumento, así que
+# puedes cambiar de proveedor sin tocar esta función.
+resumen = resumir(articulo, "¿Cómo afecta el calentamiento a la posidonia?", modelo)
+if resumen is not None:
+    print(resumen.relevancia, resumen.hallazgos)
+```
+
+Si el artículo no tiene resumen (`abstract` vacío), devuelve `None` **sin
+llamar al modelo**: no le pedimos que invente lo que no está en los datos. Esta
+parte se comprueba con un modelo falso, sin clave de API ni red.
+
 ## Fuentes
 
 Todas las fuentes descartan los resultados a los que les falta DOI o autores,
@@ -254,4 +276,5 @@ Los tests no usan la red ni necesitan claves:
   en `tests/datos/`;
 - también cubren los modelos, la deduplicación, los reintentos, la persistencia
   y el flujo de la CLI hasta la exportación BibTeX;
+- el resumen estructurado se prueba con un modelo falso, sin clave ni red;
 - la interfaz web se prueba con `streamlit.testing` y fuentes simuladas.

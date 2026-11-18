@@ -175,6 +175,8 @@ src/litmar/
                      salida en tabla), exportar, ui
   configuracion.py   FUENTES, fuentes_disponibles(), crear_fuente(nombre),
                      id_fuente()/nombre_fuente() («Europe PMC» ↔ «europepmc»)
+  resumen.py         ResumenArticulo (Pydantic) y resumir(articulo, pregunta,
+                     modelo) con with_structured_output; sin resumen → None
   ui.py              Streamlit: filas(), app()
   fuentes/
     base.py          Fuente (ABC): buscar(consulta, n, *, desde=None) abstracto;
@@ -237,6 +239,8 @@ en `.env.example`.
   comentarios y mensajes en **español**; **atributos de clase en inglés**
   (`title`, `authors`, `api_key`, `max_retries`…). Petición expresa del usuario.
   (`arxiv.py` usa nombres en inglés: deuda conocida, ver `PROGRESS.md`.)
+  Excepción D-15: los campos de `ResumenArticulo` van en español porque forman
+  parte del esquema que lee el modelo.
 - **Commits**: mensajes en inglés, en imperativo («Add…», «Fix…»), con cuerpo si
   hace falta explicar el porqué. Merges de PRs: «Merge pull request #N from
   usuario/rama». Terminan con la línea `Co-Authored-By` del agente si la usa.
