@@ -8,9 +8,11 @@ el registro solo crece (entradas nuevas arriba).
 
 _Actualizado: 2026-11-18._
 
-- **`main`**: sin cambios nuevos. El resumen estructurado ya está commiteado
-  (`caf9d01`); el trabajo de `crear_modelo` está sin commitear en
-  `feature/2nd-class-development`, que sigue a `origin/feature/2nd-class-development`.
+- **`main`**: en `ba51237`, con todo el trabajo del día (resumen estructurado
+  `caf9d01`, flujo y modelo `d2fac24`, agente `ba51237`). Hecho merge
+  fast-forward desde `feature/2nd-class-development` y push a `origin/main`
+  (fork `ddietor/litmar`, que estaba en `0083af3`): `main` y `origin/main`
+  sincronizados; `origin/main` también incorpora los 26 commits de `upstream`.
   `gh` no está instalado en esta máquina: no se han podido listar PRs.
 - **Curso**: Clase 1 (*Busca*, 17/11/2026) completa. Clase 2 (*Lee*): hechos los
   pasos 1-6 y 8 del plan (`.env` del LLM, resumen estructurado, modelo
@@ -198,7 +200,13 @@ contra esto.
   `ruff check` y `ruff format --check` en verde.
 - Documentación: README con diagrama del agente, herramientas, aprobación y
   verificación; `DECISIONS.md` D-19; `AGENTS.md` (estructura, comandos y cuatro
-  trampas nuevas). Sin commit ni push; rama `feature/2nd-class-development`.
+  trampas nuevas).
+- El usuario pidió después pasar todo el trabajo del día a `main` de su fork.
+  Se commiteó lo pendiente en la rama de trabajo como `ba51237` («Add agent
+  review mode with scoped tools and human approval»), se fusionó en `main` con
+  `merge --ff-only` y, con su visto bueno explícito, se hizo push a
+  `origin/main` (`0083af3..ba51237`). `main` local y remoto quedan iguales;
+  comprobado de nuevo tras la fusión: 265 tests y ruff en verde.
 - Queda pendiente probar ambos modos con clave real y red (una llamada manual a
   OpenAlex desde un experimento devolvió artículos, pero no se ha ejecutado
   `revisar` con un LLM real). Tampoco hay todavía test del límite de pasos
