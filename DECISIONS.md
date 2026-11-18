@@ -98,3 +98,71 @@ normal en varias fuentes). Los campos del esquema Pydantic se llaman `objetivo`,
 `metodo`, `hallazgos`, `relevancia` y `limitaciones`: son los que piden el
 encargo y la diapositiva 11, y forman parte del prompt que lee el modelo. Es una
 excepción puntual a D-2 (atributos en inglés) limitada a este esquema.
+
+### D-16 · `crear_modelo`: limitador de LangChain y claves por proveedor — 2026-11-18
+`crear_modelo()` usa `init_chat_model` con un `InMemoryRateLimiter` de
+`LLAMADAS_POR_MINUTO = 10` y cubo de tamaño 1: como mucho una petición cada 6
+segundos, por debajo del cupo por minuto del plan gratuito de Gemini. El
+limitador se pasa al modelo, así que LangChain lo aplica también a
+`with_structured_output` y a los reintentos. Descartado: envolver el modelo en
+una clase propia con `sleep` (más código y no cubre todas las vías de llamada) y
+poner el límite solo en `resumir` (el flujo y el agente también llaman al
+modelo).
+
+Dependencias nuevas: `langchain` (la fábrica `init_chat_model`),
+`langchain-google-genai` y `langchain-anthropic` (los dos proveedores de la
+diapositiva 12). Van en las dependencias normales para que cambiar de proveedor
+en el `.env` no exija instalar nada más; se descartaron extras opcionales.
+
+La fábrica lee `os.environ` (o un diccionario `entorno` inyectado), sin
+`load_dotenv()` dentro: la CLI ya carga el `.env` en `litmar.main()` (D-8) y así
+los tests no leen el `.env` real. La clave se elige según el proveedor con un
+mapa fijo y el error indica qué línea añadir al `.env`. No hay nombres de modelo
+ni claves escritos en el código. Se comprueba por introspección que
+`BaseChatModel` aplica el limitador también a `with_structured_output`.
+
+La clave se pasa a `init_chat_model(..., api_key=clave)`: los tests con fábrica
+falsa no detectaron que `ChatGoogleGenerativeAI` lee `GOOGLE_API_KEY` de
+`os.environ` y fallaba al construirse con `entorno`. Pasarla de forma explícita
+mantiene el parámetro `entorno` útil y evita depender del entorno del proceso.
+La comprobación manual construyó `ChatGoogleGenerativeAI` y `ChatAnthropic` con
+el diccionario, sin red.
+
+### D-17 · Ejemplo: ids de CLI → nombres canónicos con `nombre_fuente` — 2026-11-18
+`ejemplos/resumir.py` pasaba `("openalex", "europepmc")` a
+`buscar_en_fuentes`, que espera nombres de `configuracion.FUENTES`
+(`"OpenAlex"`, `"Europe PMC"`): `crear_fuente` indexa
+`_CONSTRUCTORES[nombre]` y respondía «fuente desconocida». La CLI ya resuelve
+esto en `_fuentes()` con `nombre_fuente()`, así que el ejemplo reutiliza esa
+misma función: `FUENTES = tuple(map(nombre_fuente, ("openalex", "europepmc")))`.
+Descartado escribir los nombres a mano (`("OpenAlex", "Europe PMC")`): es más
+corto, pero no reutiliza la conversión del repo del curso y no se adapta si
+cambian los nombres. Tampoco hizo falta sincronizar el fork ni cambiar la base:
+la rama ya partía de `upstream/main` (`2b5422e`); el fallo era del ejemplo, no
+del historial. Añadido un test que comprueba que `FUENTES` son nombres válidos;
+los tests anteriores falsificaban `buscar_en_fuentes` y no lo veían.
+
+### D-18 · Flujo LangGraph: estado de datos, dependencias por closure y citas en corchetes — 2026-11-18
+Seis nodos exactos (`planificar`, `buscar`, `filtrar`, `resumir_articulos`,
+`sintetizar`, `verificar_citas`). Usan LLM `planificar`, `resumir_articulos` y
+`sintetizar`; `buscar` y `filtrar` reutilizan `buscar_en_fuentes` y `Biblioteca`, y
+`verificar_citas` comprueba los DOI con `normalizar_doi` y un conjunto de
+seleccionados. El estado `EstadoRevision` (`TypedDict`) lleva solo datos: el
+modelo y la fábrica de fuentes se pasan a `crear_grafo(modelo, crear=...)` y los
+nodos los capturan por `functools.partial`. Así el mismo grafo sirve a CLI, UI o
+API y se prueba con dobles. Descartado guardar el modelo en el estado: no es
+serializable, ensucia los `stream()` y mezcla configuración con datos.
+
+Formato de cita elegido: `[10.xxxx/yyy]`, extraído con una expresión regular y
+normalizado antes de comparar. Descartado Markdown `[texto](url)`: obligaría a
+distinguir texto de DOI y daría más falsos positivos. Si una cita no está entre
+los seleccionados, `verificar_citas` devuelve `reescribir` y `sintetizar` recibe
+la lista de DOI inválidos como feedback; tope de 3 escrituras (1 + 2
+reescrituras) comprobado en `decidir()`, con `recursion_limit=20` como red de
+seguridad. Al agotar los reintentos se guarda el informe y el BibTeX de los DOI
+válidos con aviso, en lugar de abortar: el usuario conserva lo verificable.
+
+`--n` por defecto 6 y `filtrar` recorta a 6: con 6 resúmenes el presupuesto es
+1 planificación + 6 resúmenes + 1 síntesis + 2 reescrituras = 10 llamadas, el
+límite del `InMemoryRateLimiter` (D-16). `langgraph` pasa de dependencia
+transitiva de `langchain` a dependencia directa en `pyproject.toml`.

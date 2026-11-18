@@ -8,15 +8,15 @@ el registro solo crece (entradas nuevas arriba).
 
 _Actualizado: 2026-11-18._
 
-- **`main`**: sin cambios nuevos; el trabajo de esta sesión está sin commitear en
-  `feature/2nd-class-development` (mismo commit de partida que `main` y
-  `upstream/main`). `gh` no está instalado en esta máquina: no se han podido
-  listar PRs.
-- **Curso**: Clase 1 (*Busca*, 17/11/2026) completa. Clase 2 (*Lee*): empezada
-  el 18/11/2026 con el paso 2 del plan (resumen estructurado). Siguen pendientes
-  el paso 1 (variables del LLM y `crear_modelo`) y los pasos 3-10.
-- **Calidad**: 213 tests pasan, sin red, en 3-11 s según la caché de importación
-  (la primera carga de `langchain-core` y Pydantic tarda más); `ruff check` y
+- **`main`**: sin cambios nuevos. El resumen estructurado ya está commiteado
+  (`caf9d01`); el trabajo de `crear_modelo` está sin commitear en
+  `feature/2nd-class-development`, que sigue a `origin/feature/2nd-class-development`.
+  `gh` no está instalado en esta máquina: no se han podido listar PRs.
+- **Curso**: Clase 1 (*Busca*, 17/11/2026) completa. Clase 2 (*Lee*): hechos los
+  pasos 1-5 del plan (`.env` del LLM, resumen estructurado, modelo intercambiable,
+  ejemplo de resumen y flujo LangGraph con CLI). Siguen pendientes los pasos 6-10.
+- **Calidad**: 250 tests pasan, sin red, en 3-34 s según la caché de importación
+  (la primera carga de LangChain, LangGraph y Pydantic tarda más); `ruff check` y
   `ruff format --check` en verde.
 - **PRs abiertas**: sin comprobar (no hay `gh`).
 - **Funciona**:
@@ -25,27 +25,34 @@ _Actualizado: 2026-11-18._
     admiten `desde` (año mínimo);
   - CLI: `litmar buscar "…" --fuente openalex,europepmc --desde 2020 --bibtex
     refs.bib --guardar biblioteca.json`, con salida en tabla; `litmar exportar`;
-    `litmar ui`;
+    `litmar ui`; `litmar revisar "pregunta"` (flujo con seis pasos, informe y
+    BibTeX de lo citado);
   - interfaz web con Streamlit: búsqueda en varias fuentes, tabla y descargas
     BibTeX/CSV;
   - configuración por `.env` (plantilla en `.env.example`; todo opcional salvo
-    Zotero);
-   - `resumir(articulo, pregunta, modelo)` → `ResumenArticulo` (Pydantic) con
-     `with_structured_output`; sin resumen devuelve `None` sin llamar al modelo.
+    Zotero para buscar y `LITMAR_MODELO` + clave para el LLM);
+  - `resumir(articulo, pregunta, modelo)` → `ResumenArticulo` (Pydantic) con
+    `with_structured_output`; sin resumen devuelve `None` sin llamar al modelo;
+  - `crear_modelo()` crea el chat model de `LITMAR_MODELO` con
+    `init_chat_model`, clave según el proveedor y límite de 10 llamadas/min;
+  - `ejemplos/resumir.py` busca 3 artículos sobre posidonia en OpenAlex y Europe
+    PMC y resume cada uno; sirve de referencia para la práctica 1;
+  - `crear_grafo(modelo, crear=...)` compila el flujo de seis nodos;
+    `verificar_citas` detecta DOI inventados con código y reescribe como máximo
+    dos veces; la CLI imprime cada paso y guarda informe y BibTeX de lo citado.
 
 ## Próximos pasos
 
-Por orden de prioridad sugerido; el paso 2 del plan de la Clase 2 ya está hecho.
+Por orden de prioridad sugerido; los pasos 1-4 del plan de la Clase 2 ya están hechos.
 
 0. [ ] **Comprobar el arnés de memoria**. `SessionStart` **funciona**: el
    18/11/2026, al reanudar la sesión, inyectó el estado de este fichero y de git.
    Falta ver en una sesión real que `Stop` pide anotar el progreso cuando hay
    trabajo sin registrar (los casos se probaron a mano con un repo de prueba).
-1. [ ] **Clase 2**: seguir el «Plan de la Clase 2» (abajo). El usuario pidió el
-   paso 2 directamente (ya está hecho); para los demás, preguntar si se
-   construyen ya o se dejan para clase. Sigue pendiente el paso 1: añadir a
-   `.env.example` `LITMAR_MODELO`, `GOOGLE_API_KEY` y `ANTHROPIC_API_KEY` (D-14)
-   y escribir `crear_modelo()`; `resumir()` ya admite el modelo inyectado.
+1. [ ] **Clase 2**: seguir el «Plan de la Clase 2» (abajo). El usuario pidió los
+   pasos 2, 3, 4 y 5 directamente (ya están hechos, igual que el 1); para los
+   demás, preguntar si se construyen ya o se dejan para clase. Sigue pendiente el
+   paso 6 (herramientas).
 2. [ ] **Permisos del JSON**: `Biblioteca.guardar` deja `0600`; aplicar la umask
    con `os.chmod` antes de `os.replace`. Propuesto en la PR #10.
 3. [ ] **Mover el helper `cliente` de `tests/test_fuentes.py` a `conftest.py`**,
@@ -63,7 +70,7 @@ diapositiva una columna «En qué fijarse»: el resultado debe superarla. Consul
 la documentación actual de LangChain, LangGraph y deepagents antes de programar
 (cambian rápido) y proponer plan antes de código.
 
-1. [ ] **`.env`** (diapositiva 4): `LITMAR_MODELO=google_genai:gemini-3.8-flash`
+1. [x] **`.env`** (diapositiva 4): `LITMAR_MODELO=google_genai:gemini-3.8-flash`
    + `GOOGLE_API_KEY`, o `anthropic:claude-sonnet-5-5` + `ANTHROPIC_API_KEY`. El
    plan gratuito de Gemini tiene límites por minuto (429) y Google puede usar lo
    enviado: solo datos públicos.
@@ -72,14 +79,14 @@ la documentación actual de LangChain, LangGraph y deepagents antes de programar
    respecto a la pregunta, limitaciones) con `with_structured_output`. Cada
    campo con descripción (el modelo la lee). Sin resumen → no llamar al modelo.
    Test con modelo falso, sin clave ni red.
-3. [ ] **Modelo intercambiable**: `src/litmar/llm.py` con `crear_modelo()` que lee
+3. [x] **Modelo intercambiable**: `src/litmar/llm.py` con `crear_modelo()` que lee
    `LITMAR_MODELO` y usa `init_chat_model`; límite de llamadas por minuto para el
    plan gratuito; si falta la clave, error claro que diga qué poner en el `.env`.
    Ningún nombre de modelo ni clave en el código; cambiar de modelo = cambiar el
    `.env`.
-4. [ ] **Práctica 1** de los alumnos: `ejemplos/resumir.py` (busca 3 artículos y
-   los resume). Puede convenir tenerlo hecho como referencia.
-5. [ ] **Flujo LangGraph** (`src/litmar/flujo.py`): estado `TypedDict`
+4. [x] **Práctica 1** de los alumnos: `ejemplos/resumir.py` (busca 3 artículos y
+   los resume). Sirve de referencia.
+5. [x] **Flujo LangGraph** (`src/litmar/flujo.py`): estado `TypedDict`
    (`EstadoRevision`: pregunta, artículos, resúmenes, informe…); nodos
    `planificar` (LLM: pregunta → 2-3 búsquedas), `buscar` y `filtrar` (código:
    fuentes y Biblioteca; con resumen, sin duplicados, los N mejores),
@@ -88,6 +95,8 @@ la documentación actual de LangChain, LangGraph y deepagents antes de programar
    no, vuelve a `sintetizar`, máximo 2 veces). Comando `litmar revisar
    "pregunta" --modo flujo` que muestra cada paso (ver demo, diapositiva 21) y
    guarda el informe y el BibTeX de lo citado. Primero plan y diagrama Mermaid.
+   Hecho: D-18; `langgraph` es dependencia directa; 18 tests nuevos (14 de flujo
+   y 4 de CLI). Sin probar con modelo real ni red: solo dobles.
 6. [ ] **Herramientas** (`src/litmar/herramientas.py`): `buscar_articulos(consulta,
    fuente, n)` (reutiliza `crear_fuente`) y `listar_fuentes` (usa
    `fuentes_disponibles`), con `@tool` de LangChain. Máximo 10 en el código;
@@ -135,6 +144,129 @@ contra esto.
   proponer su hook `_antes_de_peticion` en `Fuente`.
 
 ## Registro de sesiones
+
+### 2026-11-18 — Sesión 7: flujo LangGraph y comando `litmar revisar` (Clase 2, paso 5)
+
+- El usuario pidió el encargo de las diapositivas 17-21: flujo con los nodos
+  `planificar`, `buscar`, `filtrar`, `resumir_articulos`, `sintetizar` y
+  `verificar_citas`, y comando `litmar revisar "pregunta"` que muestre cada paso
+  y guarde informe y BibTeX de lo citado. Pidió **primero plan y diagrama**; se
+  presentó el diagrama Mermaid, el estado, los límites y las decisiones
+  pendientes (formato de cita, qué hacer con citas no corregidas y `--n`). Respondió
+  «adelante» sin cambios al plan.
+- Consultados antes de programar: `PROGRESS.md`, `DECISIONS.md`, diapositivas
+  17-21 y la referencia actual de LangGraph (`StateGraph`,
+  `add_conditional_edges`, `stream`, `recursion_limit`). `langgraph` 1.2.22 ya
+  estaba instalado como transitiva de `langchain`: `uv add langgraph` lo declara
+  directo en `pyproject.toml` y `uv.lock`.
+- `src/litmar/flujo.py` nuevo: `EstadoRevision` (`TypedDict`), `PlanBusqueda` e
+  `InformeRedaccion` (Pydantic), `estado_inicial()`, `extraer_citas()`, los seis
+  nodos como funciones de módulo, `decidir()`, `biblioteca_de_citas()` y
+  `crear_grafo(modelo, crear=...)`. El modelo y la fábrica de fuentes se inyectan
+  por `functools.partial` al construir el grafo, no viajan en el estado (D-18).
+  `buscar` y `filtrar` no llaman al modelo; usan `buscar_en_fuentes` y
+  `Biblioteca`. `verificar_citas` normaliza los DOI entre corchetes y compara con
+  los seleccionados; `decidir` permite 3 escrituras como máximo. Cota
+  `recursion_limit=20`.
+- CLI: subcomando `revisar` con `--modo` (flujo por defecto; `agente` da error
+  claro), `--fuente`, `-n` (6), `--desde`, `--informe` (informe.md) y `--bibtex`
+  (citas.bib). `_revisar` usa `grafo.stream(..., stream_mode="updates")` e
+  imprime `> nodo  detalle` en cuanto cada nodo termina. Guarda el informe y el
+  BibTeX de los DOI verificados; si tras dos reescrituras quedan citas inválidas,
+  avisa en `stderr` pero conserva lo verificable. `crear_grafo` se exporta desde
+  `litmar`.
+- Tests: `tests/test_flujo.py` (14) con modelo y fuentes falsos comprueba el
+  diagrama de aristas, el recorte de consultas, que `buscar`/`filtrar` no gastan
+  LLM, la deduplicación, el tope de seleccionados, la detección de DOI
+  inventado, el feedback de reescritura, las 3 escrituras máximas y los seis pasos
+  del `stream`. `tests/test_cli.py` (4 nuevos) comprueba pasos, archivos,
+  rechazo de `--modo agente`, rutas distintas y error sin modelo. 250 tests en
+  verde; `ruff check` y `ruff format --check` en verde.
+- Documentación: README con diagrama Mermaid, tabla de nodos, ejemplo y salida
+  prevista; `DECISIONS.md` D-18. Sin commit ni push; rama
+  `feature/2nd-class-development`.
+- Queda pendiente probar `revisar` con clave real y red: aquí solo se han usado
+  dobles. El modo agente (paso 8) y las herramientas (paso 6) siguen sin
+  construirse.
+
+### 2026-11-18 — Sesión 6: corrección del ejemplo (ids → nombres canónicos)
+
+- El usuario ejecutó `uv run python ejemplos/resumir.py` y salió
+  `Aviso: openalex: fuente desconocida: 'openalex'` (y lo mismo para
+  `europepmc`), sin artículos. Se explicó la diferencia entre el fork
+  (`origin` = `ddietor/litmar`) y el repo del curso (`upstream` =
+  `sapere-ia/litmar`), y que el error no era por historial desactualizado: la
+  rama ya partía de `upstream/main` (`2b5422e`).
+- Causa: `buscar_en_fuentes` → `crear_fuente` indexa `_CONSTRUCTORES[nombre]`
+  con nombres canónicos (`"OpenAlex"`, `"Europe PMC"`); el ejemplo pasaba los
+  ids de CLI (`"openalex"`, `"europepmc"`). La CLI ya los convierte en
+  `_fuentes()` con `nombre_fuente()`.
+- Arreglo (D-17): `ejemplos/resumir.py` importa `nombre_fuente` y define
+  `FUENTES = tuple(map(nombre_fuente, ("openalex", "europepmc")))`. Igual en la
+  línea de tema alternativo que el usuario tenía comentada (ruido marino en
+  hidrófonos), conservada tal cual; a esa línea larga se le añadió
+  `# noqa: E501` para no tocar su texto. También corregido el encabezado para
+  que diga «1 artículo» cuando solo se encuentra uno.
+- `tests/test_ejemplo_resumir.py`: nuevo test que exige
+  `FUENTES == ("OpenAlex", "Europe PMC")` y que todas estén en
+  `configuracion.FUENTES`. Los tests anteriores falsificaban
+  `buscar_en_fuentes` y no detectaban el fallo. 232 tests en verde; ruff en
+  verde. Comprobación manual: `crear_fuente` construye `OpenAlex` y `EuropePMC`
+  con los nombres ya convertidos, sin red.
+- README: nota en «Ejemplo completo»; `AGENTS.md`: trampa de ids vs nombres.
+  Sigue todo sin commitear en `feature/2nd-class-development`.
+
+### 2026-11-18 — Sesión 5: ejemplo de resumen (Clase 2, paso 4)
+
+- El usuario pidió el encargo de la diapositiva 14: `ejemplos/resumir.py` que
+  busque 3 artículos y los resuma. Se leyó la diapositiva: los alumnos deben
+  ejecutarlo, contrastar los hallazgos con el DOI original y cambiar de modelo
+  para comparar.
+- Nuevo `ejemplos/resumir.py`: constantes `CONSULTA` (posidonia), `PREGUNTA`,
+  `FUENTES` (OpenAlex y Europe PMC, sin clave) y `NUM_ARTICULOS = 3`; carga el
+  `.env` por sí mismo porque no pasa por la CLI; usa `buscar_en_fuentes` y
+  `crear_modelo`, avisa de fuentes fallidas y artículos sin `abstract`, e imprime
+  los cinco campos del resumen con el DOI de cada artículo.
+- `tests/test_ejemplo_resumir.py` carga el script con `importlib` y sustituye
+  búsqueda, modelo y resumen: 5 tests sin red comprueban los tres artículos, los
+  parámetros de búsqueda, los avisos, el caso sin resultados y el error claro si
+  no hay modelo. 231 tests en verde; ruff en verde.
+- README: apartado «Ejemplo completo» en «Resumen estructurado». Todo sigue sin
+  commitear en `feature/2nd-class-development`. No se ha ejecutado con clave
+  real (no hay clave ni red).
+
+### 2026-11-18 — Sesión 4: modelo intercambiable (Clase 2, paso 3)
+
+- El usuario lanzó el encargo de la diapositiva 12. Se extrajo esa diapositiva
+  con `pypdf` y se consultaron las referencias actuales de `init_chat_model`,
+  `InMemoryRateLimiter` y la integración de Gemini antes de programar.
+- `uv add langchain langchain-google-genai langchain-anthropic` (D-16): la
+  fábrica y los dos proveedores de las diapositivas, como dependencias normales
+  para poder cambiar de proveedor solo con el `.env`.
+- Nuevo `src/litmar/llm.py`: `crear_modelo(entorno=None)` valida
+  `LITMAR_MODELO=proveedor:modelo`, exige `GOOGLE_API_KEY` o
+  `ANTHROPIC_API_KEY` según el proveedor (error que dice qué línea añadir al
+  `.env`) y pasa un `InMemoryRateLimiter` de 10 llamadas/min con cubo de 1 a
+  `init_chat_model`. No hay nombres de modelo ni claves en el código. Se
+  comprobó por introspección que `BaseChatModel` aplica el limitador también a
+  `with_structured_output`. Exportado en `litmar.__init__`.
+- `.env.example`: variables del LLM; README: sección «Modelo de lenguaje» y
+  tabla de configuración; `AGENTS.md`: módulo nuevo y trampa de `load_dotenv`.
+- `tests/test_llm.py`: fábrica falsa que captura los argumentos; cubre los dos
+  proveedores, el limitador, el recorte de espacios, los errores de modelo
+  ausente/mal escrito, clave ausente/vacía y proveedor no integrado. El test
+  comprueba que la clave del `entorno` llega a `init_chat_model` como `api_key`.
+  Sin clave ni red. 226 tests en verde; ruff en verde.
+- La comprobación manual con la fábrica real encontró un fallo que los tests con
+  fábrica falsa no veían: `ChatGoogleGenerativeAI` lee `GOOGLE_API_KEY` de
+  `os.environ`, no del diccionario; `crear_modelo(entorno)` validaba la clave
+  pero no la pasaba y fallaba al construir. Arreglado pasando `api_key=clave` a
+  `init_chat_model` (D-16). Repetida la comprobación: se construyen
+  `ChatGoogleGenerativeAI` y `ChatAnthropic` desde el diccionario, sin red.
+- El trabajo anterior (`resumir`) ya estaba commiteado como `caf9d01`; lo de
+  esta sesión sigue sin commitear en `feature/2nd-class-development`. No se ha
+  probado con un modelo real ni con clave real (no hay clave). `gh` sigue sin
+  estar instalado.
 
 ### 2026-11-18 — Sesión 3: resumen estructurado (Clase 2, paso 2)
 

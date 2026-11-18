@@ -6,6 +6,7 @@ import pytest
 
 from litmar import Biblioteca
 from litmar.cli import main, tabla
+from litmar.flujo import LIMITE_RECURSION
 from litmar.fuentes import Fuente, OpenAlex
 
 
@@ -266,3 +267,95 @@ def test_tabla_recorta_al_ancho(hacer_articulo):
     assert all(len(linea) <= 80 for linea in lineas)
     assert lineas[1].endswith("…")
     assert lineas[1].startswith("2021  12345  García et al.")
+
+
+class GrafoFalso:
+    """Grafo de prueba: emite los seis pasos sin modelo, fuentes ni red."""
+
+    def __init__(self, articulo, informe):
+        self.articulo = articulo
+        self.informe = informe
+        self.config_visto = None
+
+    def stream(self, estado, *, config, stream_mode):
+        self.config_visto = config
+        assert stream_mode == "updates"
+        yield {"planificar": {"traza": "2 consultas"}}
+        yield {"buscar": {"traza": "4 artículos"}}
+        yield {"filtrar": {"traza": "1 seleccionados", "seleccionados": [self.articulo]}}
+        yield {"resumir_articulos": {"traza": "1 resúmenes"}}
+        yield {
+            "sintetizar": {
+                "traza": "informe (1 citas)",
+                "informe": self.informe,
+                "intentos_sintesis": 1,
+            }
+        }
+        yield {
+            "verificar_citas": {
+                "traza": "ok (1 citas)",
+                "citas": [self.articulo.doi],
+                "citaciones_invalidas": [],
+                "avisos": [],
+            }
+        }
+
+
+def test_revisar_muestra_pasos_y_guarda_informe_y_bibtex(
+    tmp_path, monkeypatch, capsys, hacer_articulo
+):
+    articulo = hacer_articulo(doi="10.1000/revisado", abstract="Resumen.")
+    informe = f"La pradera fija carbono [{articulo.doi}]."
+    grafo = GrafoFalso(articulo, informe)
+    monkeypatch.setattr("litmar.cli.crear_modelo", lambda: object())
+    monkeypatch.setattr("litmar.cli.crear_grafo", lambda modelo: grafo)
+    ruta_informe = tmp_path / "informe.md"
+    ruta_bib = tmp_path / "citas.bib"
+
+    codigo = main(
+        [
+            "revisar",
+            "¿Cuánto carbono fija la posidonia?",
+            "--informe",
+            str(ruta_informe),
+            "--bibtex",
+            str(ruta_bib),
+        ]
+    )
+
+    assert codigo == 0
+    salida = capsys.readouterr()
+    for paso in (
+        "planificar",
+        "buscar",
+        "filtrar",
+        "resumir_articulos",
+        "sintetizar",
+        "verificar_citas",
+    ):
+        assert f"> {paso}" in salida.out
+    assert ruta_informe.read_text(encoding="utf-8") == informe
+    assert articulo.doi in ruta_bib.read_text(encoding="utf-8")
+    assert f"BibTeX:  {ruta_bib} (1 artículo)" in salida.out
+    assert grafo.config_visto == {"recursion_limit": LIMITE_RECURSION}
+
+
+def test_revisar_rechaza_el_modo_agente(monkeypatch, capsys):
+    monkeypatch.setattr("litmar.cli.crear_modelo", lambda: pytest.fail("no debe crear el modelo"))
+    assert main(["revisar", "pregunta", "--modo", "agente"]) == 1
+    assert "modo agente aún no está disponible" in capsys.readouterr().err
+
+
+def test_revisar_no_permite_el_mismo_archivo_para_informe_y_bibtex(tmp_path, capsys):
+    ruta = tmp_path / "igual.txt"
+    assert main(["revisar", "pregunta", "--informe", str(ruta), "--bibtex", str(ruta)]) == 1
+    assert "deben ser distintos" in capsys.readouterr().err
+
+
+def test_revisar_explica_el_error_si_falta_el_modelo(monkeypatch, capsys):
+    def sin_modelo():
+        raise ValueError("falta LITMAR_MODELO: añade una línea al .env")
+
+    monkeypatch.setattr("litmar.cli.crear_modelo", sin_modelo)
+    assert main(["revisar", "pregunta"]) == 1
+    assert "falta LITMAR_MODELO" in capsys.readouterr().err

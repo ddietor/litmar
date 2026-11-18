@@ -41,6 +41,14 @@ arXiv y PANGAEA. `.env.example` explica cada variable:
 `.env` no se sube a git. Las variables que ya estén definidas en el entorno
 tienen prioridad sobre las del fichero.
 
+Para el modelo de lenguaje se usan estas otras variables:
+
+| Variable | Para qué |
+| --- | --- |
+| `LITMAR_MODELO` | `proveedor:modelo` que crear_modelo() pasa a `init_chat_model` |
+| `GOOGLE_API_KEY` | Clave de Google AI Studio, si el proveedor es `google_genai` |
+| `ANTHROPIC_API_KEY` | Clave de Anthropic, si el proveedor es `anthropic` |
+
 ## Interfaz web
 
 ```bash
@@ -77,6 +85,9 @@ uv run litmar buscar "deep learning" -n 20 --guardar biblioteca.json
 
 # Generar referencias para LaTeX u otras herramientas compatibles
 uv run litmar exportar biblioteca.json --bibtex referencias.bib
+
+# Preguntar al modelo y guardar un informe que solo cita artículos reales
+uv run litmar revisar "¿Qué papel tiene la posidonia en el carbono azul?"
 ```
 
 - **Combinar resultados:** si el JSON ya existe, los resultados se combinan con
@@ -158,6 +169,30 @@ El JSON es una lista de artículos con `title`, `authors`, `year`, `doi`,
 de inserción. Al cargar, `abstract` y `citations` son opcionales y toman los
 valores `""` y `0`.
 
+## Modelo de lenguaje
+
+`crear_modelo()` lee `LITMAR_MODELO` (con forma `proveedor:modelo`) y devuelve un
+chat model de LangChain. No hay nombres de modelo ni claves en el código: cambiar
+de modelo es cambiar una línea del `.env`. Los proveedores integrados son
+`google_genai` (lee `GOOGLE_API_KEY`) y `anthropic` (lee `ANTHROPIC_API_KEY`). Si
+falta la clave, el error dice qué línea añadir al `.env`.
+
+El modelo lleva un limitador de **10 llamadas por minuto sin ráfagas** para no
+superar el cupo del plan gratuito de Gemini. La CLI carga el `.env` antes de
+crear el modelo; desde Python, usa `dotenv.load_dotenv()` o pasa un diccionario
+a `crear_modelo(entorno)`.
+
+```python
+from litmar import crear_modelo, resumir
+
+modelo = crear_modelo()
+resumen = resumir(articulo, "¿Cómo afecta el calentamiento a la posidonia?", modelo)
+```
+
+Las dependencias son `langchain` (para `init_chat_model`), `langgraph` (para el
+flujo de revisión) y los paquetes de los dos proveedores,
+`langchain-google-genai` y `langchain-anthropic`.
+
 ## Resumen estructurado
 
 `resumir(articulo, pregunta, modelo)` le pasa a un modelo de lenguaje el resumen
@@ -179,6 +214,96 @@ if resumen is not None:
 Si el artículo no tiene resumen (`abstract` vacío), devuelve `None` **sin
 llamar al modelo**: no le pedimos que invente lo que no está en los datos. Esta
 parte se comprueba con un modelo falso, sin clave de API ni red.
+
+### Ejemplo completo
+
+`ejemplos/resumir.py` busca tres artículos sobre posidonia y resume cada uno
+respecto a una pregunta. Es el punto de partida de la práctica: cambia `CONSULTA`
+y `PREGUNTA` por tu tema, y cambia `LITMAR_MODELO` en el `.env` para comparar
+modelos. Las fuentes se convierten con `nombre_fuente()` —igual que hace la
+CLI— para pasar nombres canónicos (`OpenAlex`, `Europe PMC`) a
+`buscar_en_fuentes`, no los ids (`openalex`, `europepmc`).
+
+```bash
+uv run python ejemplos/resumir.py
+```
+
+Carga el `.env` por sí mismo (no pasa por la CLI) e imprime cada resumen con su
+DOI para que puedas abrirlo y comprobar si los hallazgos son fieles.
+
+## Revisión con flujo
+
+`litmar revisar "pregunta"` ejecuta un grafo de LangGraph con seis nodos. Tres
+deciden con el modelo; los otros tres son código, porque lo que se puede
+comprobar no se le delega a un modelo:
+
+```mermaid
+flowchart TD
+    START([START]) --> P["planificar · LLM"]
+    P --> B["buscar · código"]
+    B --> F["filtrar · código"]
+    F --> R["resumir_articulos · LLM × artículo"]
+    R --> S["sintetizar · LLM"]
+    S --> V["verificar_citas · código"]
+
+    V -->|"citas correctas o 2 reintentos agotados"| END([END])
+    V -->|"DOI inventado y quedan reintentos"| S
+```
+
+| Nodo | Quién decide | Qué hace |
+| --- | --- | --- |
+| `planificar` | LLM | Propone 2-3 consultas de búsqueda; el código recorta vacías y repeticiones. |
+| `buscar` | código | Busca en las fuentes y junta los resultados en una `Biblioteca` (sin duplicar DOI). |
+| `filtrar` | código | Descarta artículos sin resumen, ordena por citas y año y se queda con los N mejores. |
+| `resumir_articulos` | LLM × artículo | Usa `resumir()` para adaptar cada artículo a la pregunta. |
+| `sintetizar` | LLM | Escribe el informe citando cada afirmación como `[10.xxxx/yyy]`. |
+| `verificar_citas` | código | Extrae los DOI con una expresión regular y comprueba que estén entre los seleccionados. |
+
+Si aparece un DOI que no estaba en la lista, `verificar_citas` vuelve a
+`sintetizar` con ese feedback. Como máximo hay **dos reescrituras** (tres
+escrituras del informe): el límite está en el código, y `recursion_limit=20` es
+la red de seguridad de LangGraph. Con 6 artículos el presupuesto es
+1 + 6 + 1 + 2 = 10 llamadas, justo el límite del limitador.
+
+```bash
+uv run litmar revisar "¿Qué papel tiene la posidonia en el carbono azul?" \
+    --fuente openalex,europepmc --desde 2020 -n 6 \
+    --informe informe.md --bibtex citas.bib
+```
+
+La terminal muestra cada paso en cuanto termina:
+
+```text
+> planificar         3 consultas
+> buscar            24 artículos
+> filtrar            6 seleccionados
+> resumir_articulos  6 resúmenes
+> sintetizar         informe (5 citas)
+> verificar_citas    1 cita inválida → reescribir
+> sintetizar         informe (4 citas)
+> verificar_citas    ok (4 citas)
+Informe: informe.md
+BibTeX:  citas.bib (4 artículos)
+```
+
+`--n` (por defecto 6) es el máximo de artículos seleccionados; `filtrar` lo
+recorta a 6 aunque se pida más. `--fuente` admite los mismos ids que `buscar`.
+Si tras las dos reescrituras quedan citas inválidas, se guardan igualmente el
+informe y el BibTeX **solo de los DOI verificados**, con un aviso en `stderr`.
+
+Desde Python se puede construir el mismo grafo e inyectar el modelo y las
+fuentes; así se prueba sin clave ni red:
+
+```python
+from litmar import crear_grafo, crear_modelo
+from litmar.flujo import estado_inicial
+
+grafo = crear_grafo(crear_modelo())
+resultado = grafo.invoke(
+    estado_inicial("¿Qué papel tiene la posidonia en el carbono azul?", ["OpenAlex"]),
+    config={"recursion_limit": 20},
+)
+```
 
 ## Fuentes
 
@@ -276,5 +401,6 @@ Los tests no usan la red ni necesitan claves:
   en `tests/datos/`;
 - también cubren los modelos, la deduplicación, los reintentos, la persistencia
   y el flujo de la CLI hasta la exportación BibTeX;
-- el resumen estructurado se prueba con un modelo falso, sin clave ni red;
+- el resumen estructurado, `crear_modelo()` y el ejemplo se prueban con modelos
+  y una fábrica falsos, sin clave ni red;
 - la interfaz web se prueba con `streamlit.testing` y fuentes simuladas.

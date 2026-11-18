@@ -14,6 +14,8 @@ from litmar.articulo import Articulo
 from litmar.biblioteca import Biblioteca
 from litmar.busqueda import buscar_en_fuentes
 from litmar.configuracion import FUENTES, id_fuente, nombre_fuente
+from litmar.flujo import LIMITE_RECURSION, biblioteca_de_citas, crear_grafo, estado_inicial
+from litmar.llm import crear_modelo
 
 ANCHO_AUTORES = 20
 
@@ -80,6 +82,50 @@ def _parser() -> argparse.ArgumentParser:
     exportar = comandos.add_parser("exportar", help="Exportar una biblioteca JSON a BibTeX")
     exportar.add_argument("biblioteca", type=Path)
     exportar.add_argument("--bibtex", type=Path, required=True, metavar="ARCHIVO.bib")
+
+    revisar = comandos.add_parser(
+        "revisar",
+        help="Responder a una pregunta con un informe que solo cita artículos reales",
+    )
+    revisar.add_argument("pregunta", type=_consulta)
+    revisar.add_argument(
+        "--modo",
+        choices=("flujo", "agente"),
+        default="flujo",
+        help="Modo de revisión (el modo agente se añadirá después)",
+    )
+    revisar.add_argument(
+        "-n",
+        "--n",
+        type=_positivo,
+        default=6,
+        metavar="N",
+        help="Máximo de artículos seleccionados (6)",
+    )
+    revisar.add_argument(
+        "--fuente",
+        type=_fuentes,
+        default=["OpenAlex", "Europe PMC"],
+        metavar="F1,F2",
+        help="Fuentes separadas por comas (openalex,europepmc)",
+    )
+    revisar.add_argument(
+        "--desde", type=int, metavar="AÑO", help="Solo artículos publicados ese año o después"
+    )
+    revisar.add_argument(
+        "--informe",
+        type=Path,
+        default=Path("informe.md"),
+        metavar="ARCHIVO.md",
+        help="Archivo donde guardar el informe (informe.md)",
+    )
+    revisar.add_argument(
+        "--bibtex",
+        type=Path,
+        default=Path("citas.bib"),
+        metavar="ARCHIVO.bib",
+        help="Archivo donde guardar el BibTeX de lo citado (citas.bib)",
+    )
 
     comandos.add_parser(
         "ui",
@@ -150,6 +196,37 @@ def _exportar(args: argparse.Namespace) -> int:
     return 0
 
 
+def _revisar(args: argparse.Namespace) -> int:
+    """Ejecuta el flujo, imprime cada paso y guarda informe y BibTeX de lo citado."""
+    if args.modo == "agente":
+        print("Error: el modo agente aún no está disponible; usa --modo flujo.", file=sys.stderr)
+        return 1
+    if args.informe.resolve() == args.bibtex.resolve():
+        raise ValueError("el informe y el archivo BibTeX deben ser distintos")
+
+    grafo = crear_grafo(crear_modelo())
+    estado = estado_inicial(args.pregunta, args.fuente, args.n, args.desde)
+    resultado: dict = {}
+    for fragmento in grafo.stream(
+        estado,
+        config={"recursion_limit": LIMITE_RECURSION},
+        stream_mode="updates",
+    ):
+        for nombre, actualizacion in fragmento.items():
+            print(f"> {nombre:<18} {actualizacion.get('traza', '')}".rstrip())
+            resultado.update(actualizacion)
+
+    Path(args.informe).write_text(resultado.get("informe", ""), encoding="utf-8")
+    citas = biblioteca_de_citas(resultado)
+    citas.exportar_bibtex(args.bibtex)
+    for aviso in resultado.get("avisos", []):
+        print(f"Aviso: {aviso}", file=sys.stderr)
+    sufijo = "" if len(citas) == 1 else "s"
+    print(f"Informe: {args.informe}")
+    print(f"BibTeX:  {args.bibtex} ({len(citas)} artículo{sufijo})")
+    return 0
+
+
 def _lanzar_ui(opciones: list[str]) -> int:
     """Ejecuta `streamlit run ui.py` con el mismo intérprete y entorno."""
     if importlib.util.find_spec("streamlit") is None:
@@ -187,6 +264,8 @@ def main(argv: list[str] | None = None) -> int:
     if extra:
         parser.error(f"argumentos no reconocidos: {' '.join(extra)}")
     try:
+        if args.comando == "revisar":
+            return _revisar(args)
         return _buscar(args) if args.comando == "buscar" else _exportar(args)
     except (OSError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)

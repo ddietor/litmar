@@ -144,13 +144,14 @@ del Mar, tres clases, imparte Roberto Bada). Las diapositivas están en `docs/`
 
 ```bash
 uv sync                          # instala todo, incluido el grupo dev (pytest, ruff, streamlit)
-uv run pytest                    # tests (sin red; ~204, menos de 1 s)
+uv run pytest                    # tests (sin red; 250; de 3 a 34 s según caché de imports)
 uv run ruff check --fix          # lint (reglas E, W, F, I, UP, B; línea de 100)
 uv run ruff format               # formato
 uv run litmar --help             # CLI
 uv run litmar buscar "posidonia carbon" --fuente openalex,europepmc --desde 2020 --bibtex refs.bib
 uv run litmar buscar "consulta" -n 10 --guardar biblioteca.json
 uv run litmar exportar biblioteca.json --bibtex refs.bib
+uv run litmar revisar "¿Qué papel tiene la posidonia en el carbono azul?"  # informe + BibTeX citado
 uv run litmar ui                 # interfaz web (Streamlit)
 uv run litmar ui --server.headless true --server.port 8599   # sin navegador ni preguntas
 ```
@@ -172,9 +173,16 @@ src/litmar/
   busqueda.py        buscar_en_fuentes(): busca en varias fuentes, junta sin
                      duplicar y recoge errores por fuente. La usan CLI y UI
   cli.py             argparse: buscar (--fuente, --desde, --guardar, --bibtex,
-                     salida en tabla), exportar, ui
+                     salida en tabla), exportar, revisar (flujo, informe y
+                     BibTeX de lo citado), ui
+  flujo.py           EstadoRevision (TypedDict), seis nodos de LangGraph,
+                     extraer_citas(), decidir() y crear_grafo(modelo, crear=...);
+                     verificar_citas comprueba DOI por código y reescribe ≤2
+                     veces; `__init__.py` exporta crear_grafo
   configuracion.py   FUENTES, fuentes_disponibles(), crear_fuente(nombre),
                      id_fuente()/nombre_fuente() («Europe PMC» ↔ «europepmc»)
+  llm.py             crear_modelo(): LITMAR_MODELO + init_chat_model, clave por
+                     proveedor y limitador InMemoryRateLimiter (10 llamadas/min)
   resumen.py         ResumenArticulo (Pydantic) y resumir(articulo, pregunta,
                      modelo) con with_structured_output; sin resumen → None
   ui.py              Streamlit: filas(), app()
@@ -283,8 +291,18 @@ en `.env.example`.
   `litmar ui --server.headless true`.
 - **argparse**: `nargs=REMAINDER` en un subcomando no captura opciones que
   empiezan por `--`; por eso `litmar ui` usa `parse_known_args`.
+- **LangGraph `stream_mode="updates"`**: cada fragmento es `{nombre_del_nodo:
+  actualización parcial}`; la CLI imprime el nombre del nodo y su `traza` y va
+  acumulando las actualizaciones. Sin `config={"recursion_limit": 20}` un bucle
+  condicional acaba en `GraphRecursionError` (D-18).
+- **`buscar_en_fuentes` espera nombres canónicos**, no ids de CLI:
+  `crear_fuente` indexa `_CONSTRUCTORES["OpenAlex"]`, no `"openalex"`. La CLI
+  convierte los ids con `nombre_fuente()`; un script propio debe hacer lo mismo
+  (D-17). Si no, salen avisos «fuente desconocida» y no se busca nada.
 - **`.env` solo se carga en `litmar.main()`** (la entrada del comando), no en
-  `cli.main(argv)`: así los tests no leen el `.env` real.
+  `cli.main(argv)` ni en `crear_modelo()`: así los tests no leen el `.env` real.
+  Desde un script propio hay que llamar a `load_dotenv()` o pasar un diccionario
+  a `crear_modelo(entorno)`.
 - **`ruff format` también formatea los bloques de Python del README** (alinea
   distinto los comentarios). Es normal ver el README en el diff tras formatear.
 - **`Retry-After: 0`** es válido: comprobar con `is None`, no con `or`.
