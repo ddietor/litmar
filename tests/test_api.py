@@ -1,5 +1,8 @@
 """Tests de la API HTTP: sin red, sin claves y sin escribir archivos."""
 
+import json
+import shutil
+import subprocess
 from importlib.resources import files
 
 import pytest
@@ -40,6 +43,68 @@ def test_index_sirve_la_web_desde_el_paquete():
     assert "<script src=" not in html
     assert "<link rel=" not in html
     assert "fetch('http" not in html and 'fetch("http' not in html
+
+
+def test_index_ofrece_descarga_bibtex_de_la_busqueda():
+    """La web genera el .bib en el navegador, sin rutas nuevas."""
+    html = files("litmar").joinpath("web", "index.html").read_text(encoding="utf-8")
+
+    # El botón nace desactivado y solo se activa si la búsqueda devuelve artículos.
+    assert '<button id="descargar-bib" type="button" disabled>Descargar BibTeX</button>' in html
+    assert '$("descargar-bib").disabled = articulos.length === 0;' in html
+
+    # Mismo formato que `Biblioteca.a_bibtex`: llaves dobles, DOI literal y claves únicas.
+    for fragmento in (
+        "const ESCAPES_BIBTEX = {",
+        "`  title = {{${escaparBibtex(articulo.title)}}}`",
+        "`  doi = {${articulo.doi}}`",
+        "usadas.has(clave)",
+        r'return entradas.length ? entradas.join("\n\n") + "\n" : "";',
+        "application/x-bibtex",
+        'enlace.download = "busqueda.bib";',
+    ):
+        assert fragmento in html
+    assert 'enlace.download = "revision.bib"' in html  # el de la revisión sigue ahí
+    assert "/exportar" not in html
+
+
+def test_bibtex_de_la_web_coincide_con_biblioteca(tmp_path, hacer_articulo):
+    """Con Node disponible, compara la función del HTML con la de Python."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node no está instalado; el test anterior comprueba la página")
+
+    html = files("litmar").joinpath("web", "index.html").read_text(encoding="utf-8")
+    inicio = html.index("    // escaping de LaTeX")
+    fin = html.index("    function descargarBib(", inicio)
+    javascript = html[inicio:fin]
+
+    articulos = [
+        hacer_articulo(
+            title='Posidonia & "caballas"_2026%',
+            authors=("García, Ana", "López, Juan"),
+        ),
+        hacer_articulo(doi="10.1000/abc456", authors=("García, Ana",)),  # clave repetida
+        hacer_articulo(doi="10.1000/def789", authors=("Muñoz, Olga",), abstract=""),
+    ]
+    datos = [api.ArticuloSalida.desde(a).model_dump() for a in articulos]
+    fichero_datos = tmp_path / "articulos.json"
+    fichero_datos.write_text(json.dumps(datos, ensure_ascii=False), encoding="utf-8")
+    script = (
+        javascript
+        + '\nconst datos = JSON.parse(require("fs").readFileSync(process.argv[2], "utf8"));'
+        + "\nprocess.stdout.write(bibtexDeArticulos(datos));\n"
+    )
+    fichero_js = tmp_path / "bibtex.js"
+    fichero_js.write_text(script, encoding="utf-8")
+    resultado = subprocess.run(
+        [node, str(fichero_js), str(fichero_datos)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert resultado.returncode == 0, resultado.stderr
+    assert resultado.stdout == Biblioteca(articulos).a_bibtex()
 
 
 def test_salud_no_toca_nada():

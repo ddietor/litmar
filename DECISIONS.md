@@ -289,3 +289,24 @@ arranque, no espera a que la API esté lista.
 
 No se ha podido verificar con `docker compose`: Docker no está instalado en la
 máquina del ensayo. Se validó la sintaxis del YAML con PyYAML.
+
+### D-28 — descargar BibTeX de la búsqueda desde el navegador — 2026-11-19
+Práctica 1 de la Clase 3 (diapositiva 14): pedir una mejora de la web con su
+test. La revisión ya descargaba `revision.bib` con el BibTeX que calcula la API;
+faltaba exportar los resultados de la búsqueda. El usuario pidió **`.bib` en vez
+de CSV** porque es texto plano y sirve tanto para editores sencillos como para
+programas de referencias.
+
+Se descarta añadir `POST /bibtex`: eso obligaría a tocar el contrato (D-24), el
+proxy de nginx (D-27) y la documentación de la API para un fichero que ya se
+puede construir con los datos que la web acaba de recibir de `/buscar`. La web
+genera el texto en JavaScript, sin npm y sin nueva ruta.
+
+El coste es que `biblioteca.py` y `index.html` tienen dos implementaciones del
+mismo formato (escape LaTeX, clave apellido+año con sufijos, DOI sin escapar).
+Para que no se separen, hay un test que extrae las funciones del HTML y, **si
+Node está instalado**, compara su salida con `Biblioteca.a_bibtex()` usando tres
+artículos (uno con clave repetida y otro sin resumen); si no hay Node, se omite
+y queda la comprobación estática del contenido de la página. Si se decidiera
+añadir más campos al BibTeX, habría que cambiar los dos sitios: la alternativa
+sería mover la generación a la API.

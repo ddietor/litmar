@@ -210,6 +210,10 @@ del paquete, así que también funciona con litmar instalado.
   /fuentes`), elige `n` y `desde`, y pulsa «Buscar». La tabla trae año, citas,
   autores, título y el DOI enlazado a doi.org. Si alguna fuente falla, se ven
   sus resultados y un aviso con el motivo; si fallan todas, un error claro.
+  Con resultados, el botón «Descargar BibTeX» guarda `busqueda.bib`: un fichero
+  de texto que se abre en el bloc de notas y en cualquier gestor de referencias.
+  Se genera en el navegador con el mismo formato que `Biblioteca.a_bibtex()`
+  (claves apellido+año, escape LaTeX y DOI literal), sin nueva ruta en la API.
 - **Revisión:** escribe la pregunta, elige modo, fuentes, `n` y `desde`, y pulsa
   «Revisar». Antes avisa de que **una revisión tarda varios minutos** y mientras
   espera deja el botón desactivado con el estado «Revisando…». Al terminar

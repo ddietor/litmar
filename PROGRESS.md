@@ -9,10 +9,11 @@ el registro solo crece (entradas nuevas arriba).
 _Actualizado: 2026-11-19._
 
 - **`upstream/main`**: en `96dd812` («Fix PROGRESS.md after merging PR #15»).
-  El HEAD local es `ab44139` («chore: sync with upstream main», hecho por el
-  usuario): incluye la resolución a favor de `upstream/main` y la API; por eso
-  `tests/test_ejemplo_resumir.py` ya no está en el árbol. Sin commitear quedan
-  la web (D-25), el Dockerfile (D-26) y su documentación. **No se ha hecho push**.
+  El HEAD local y de `origin/feature/3rd-class-development` es `b338c5a`
+  («docker creation», commit y push hechos por el usuario): incluye la API
+  (D-24), la web (D-25), Dockerfile (D-26) y compose (D-27). Por eso
+  `tests/test_ejemplo_resumir.py` ya no está en el árbol. Sin commitear queda
+  solo la descarga de BibTeX de la búsqueda (D-28) y su documentación.
 - **Curso**: Clase 1 (*Busca*, 17/11) y Clase 2 (*Lee*, 18/11) completas
   respecto a las diapositivas; queda la votación de la Clase 2 (paso 7), en
   clase. La Clase 3 (*APIs, reproducibilidad y transferencia*, **19/11/2026**)
@@ -20,7 +21,7 @@ _Actualizado: 2026-11-19._
   encargos 1 a 5** (API D-24, web D-25, Práctica 1, Dockerfile D-26 y compose
   D-27). Ni el Dockerfile ni el compose se han podido ejecutar: Docker no está
   instalado en la máquina del ensayo. Siguen la Práctica 2 y el checklist.
-- **Calidad**: 333 tests pasan, sin red; `ruff check` y `ruff format --check`
+- **Calidad**: 335 tests pasan, sin red; `ruff check` y `ruff format --check`
   en verde. La API se probó también con `litmar servir` de verdad: `/salud`,
   `/fuentes`, `/docs` y `/openapi.json` responden 200. `uv build` incluye
   `litmar/web/index.html` en la rueda.
@@ -57,10 +58,11 @@ _Actualizado: 2026-11-19._
     `/revisiones` (flujo o agente), con modelos Pydantic y `/docs`; sin token,
     sin escrituras en disco. Se levanta con `litmar servir [--host] [--puerto]
     [--recargar]`.
-  - web en `src/litmar/web/index.html` (D-25): un único HTML con CSS y JS,
-    servido por la API en `GET /`. Búsqueda con fuentes/año y DOI enlazados,
-    revisión con aviso de espera, informe y descarga de BibTeX en el navegador;
-    solo rutas relativas, sin CORS;
+  - web en `src/litmar/web/index.html` (D-25, D-28): un único HTML con CSS y JS,
+    servido por la API en `GET /`. Búsqueda con fuentes/año, DOI enlazados y
+    botón que descarga los resultados en `busqueda.bib` (generado en el
+    navegador, sin ruta nueva); revisión con aviso de espera, informe y
+    descarga del BibTeX citado; solo rutas relativas, sin CORS;
   - `Dockerfile` y `.dockerignore` (D-26): Python 3.12 slim + uv fijado,
     dependencias desde `uv.lock` antes del código y sin grupo dev, usuario
     `app`, secretos fuera de la imagen. Sin construir (no hay Docker);
@@ -79,7 +81,8 @@ Por orden de prioridad sugerido.
    trabajo sin registrar (los casos se probaron a mano con un repo de prueba).
 1. [ ] **Clase 3** (19/11/2026): seguir el «Plan de la Clase 3» (abajo),
    encargo a encargo y con el contrato propuesto antes del código. Hechos del 1
-   al 5; siguen la Práctica 2 (encargo 6) y el checklist (7), además del
+   al 5 y la mejora de la Práctica 1 (BibTeX de la búsqueda, D-28); siguen la
+   Práctica 2 (encargo 6) y el checklist (7), además del
    cierre (8). Para probar la práctica hace falta Docker (no instalado en la
    máquina del ensayo): compose y Dockerfile están escritos pero no verificados.
    Pendiente de la clase: «del caso de uso al primer encargo» (d. 32).
@@ -231,7 +234,9 @@ encargo», cómo seguir).
 3. [x] **Práctica 1** de los alumnos (d. 14, 19/11): `litmar servir`, web en
    `/` y `/docs`, F12 > Red, provocar un 422, pedir a la IA una mejora o una
    ruta nueva (exportar en BibTeX) con su test. Puede convenir tener hecha la
-   ruta de BibTeX como referencia (sin integrarla).
+   Hecho además el ejemplo de referencia (D-28): botón que descarga la búsqueda
+   en `.bib`, generado en el navegador, con dos tests (comprobación estática y
+   comparación con `Biblioteca.a_bibtex()` si hay Node).
 4. [x] **Dockerfile** (diapositivas 19-20, 19/11); decisiones en D-26, sin
    construir (no hay Docker en la máquina). Prompt: «Crea un Dockerfile para
    litmar usando uv con la imagen oficial de Astral y Python 3.12 slim. Instala
@@ -378,12 +383,23 @@ contra esto.
   (D-26). No se pudo construir: Docker no está instalado. Sí se validó en un
   directorio temporal que `uv sync --locked --no-dev --no-install-project`
   funciona con solo `uv.lock`, `pyproject.toml` y `README.md` (62 paquetes, sin
-  pytest, ruff ni streamlit). Comprobación hecha en temporal. README añadió la sección «Docker».
+  pytest, ruff ni streamlit). README añadió la sección «Docker».
 - Encargo 5: `compose.yaml` con `api` y `web` (nginx:1.27-alpine) y
   `nginx/default.conf` (D-27). Se explicaron todas las líneas y los comandos
   `up --build`, `ps`, `logs -f` y `down`. nginx sirve la web en `/` y reenvía
   las seis rutas de la API a `api:8000` con timeouts de 600 s. Validado con
   PyYAML; no ejecutado (sin Docker). README añadió la sección de compose.
+- El usuario hizo commit y push de `b338c5a` («docker creation») con el
+  Dockerfile, `.dockerignore`, compose, nginx y su documentación, mientras se
+  trabajaba en la mejora de la web.
+- Mejora de la Práctica 1 (D-28): el usuario pidió «exportar .bib en vez de
+  CSV» porque es texto plano y lo abre cualquier editor. Se añadió un botón en
+  la búsqueda que genera `busqueda.bib` en JavaScript con el mismo formato que
+  `Biblioteca.a_bibtex()` (escape LaTeX, claves apellido+año con sufijos, DOI
+  literal), sin nueva ruta ni cambio en el proxy de nginx. Se descartó un
+  `POST /bibtex` para no tocar el contrato D-24; el coste es la duplicación de
+  formato, vigilada por un test que compara la función JS con Python cuando hay
+  Node instalado (en esta máquina, 335 tests en verde). README actualizado.
 - Queda pendiente la decisión del usuario sobre commit y push (no pedidos).
 
 ### 2026-11-19 — Sesión 3: fusión de la PR #15 y repaso de la memoria

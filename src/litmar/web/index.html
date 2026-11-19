@@ -199,6 +199,8 @@
           <tbody id="resultados"></tbody>
         </table>
       </div>
+
+      <button id="descargar-bib" type="button" disabled>Descargar BibTeX</button>
     </section>
 
     <section aria-labelledby="titulo-revision">
@@ -259,6 +261,7 @@
     const POR_DEFECTO = ["openalex", "europepmc"];
     const $ = (id) => document.getElementById(id);
     let bibtex = "";
+    let articulos = [];
 
     async function pedir(url, opciones) {
       let respuesta;
@@ -404,15 +407,76 @@
       URL.revokeObjectURL(url);
     }
 
+    // escaping de LaTeX: el mismo mapa que Biblioteca.a_bibtex() (biblioteca.py).
+    const ESCAPES_BIBTEX = {
+      "\\": "\\textbackslash{}", "&": "\\&", "%": "\\%", "$": "\\$", "#": "\\#",
+      "_": "\\_", "{": "\\{", "}": "\\}", "~": "\\textasciitilde{}", "^": "\\textasciicircum{}",
+    };
+
+    function escaparBibtex(texto) {
+      return String(texto).replace(/[\\&%$#_{}~^]/g, (caracter) => ESCAPES_BIBTEX[caracter]);
+    }
+
+    function apellido(autor) {
+      // «García, Ana» → «García»; sin coma, la última palabra (articulo.py).
+      autor = autor.trim();
+      return autor.includes(",") ? autor.split(",")[0].trim() : autor.split(/\s+/).pop();
+    }
+
+    function claveUnica(articulo, usadas) {
+      // Clave apellido+año en ASCII, con sufijos a, b, c... si se repite.
+      let base = apellido(articulo.authors[0]).normalize("NFKD").replace(/[^\x00-\x7F]/g, "");
+      base = base.replace(/[^a-zA-Z0-9]/g, "").toLowerCase() || "anonimo";
+      base += articulo.year;
+      const letras = "abcdefghijklmnopqrstuvwxyz";
+      let clave = base;
+      let indice = 0;
+      while (usadas.has(clave)) clave = base + letras[indice++];
+      usadas.add(clave);
+      return clave;
+    }
+
+    function entradaBibtex(articulo, clave) {
+      const campos = [
+        `  title = {{${escaparBibtex(articulo.title)}}}`,
+        `  author = {${articulo.authors.map(escaparBibtex).join(" and ")}}`,
+        `  journal = {${escaparBibtex(articulo.journal)}}`,
+        `  year = {${articulo.year}}`,
+        `  doi = {${articulo.doi}}`, // sin escapar: biblatex lo trata literalmente
+      ];
+      if (articulo.abstract) campos.push(`  abstract = {${escaparBibtex(articulo.abstract)}}`);
+      return `@article{${clave},\n${campos.join(",\n")}\n}`;
+    }
+
+    function bibtexDeArticulos(lista) {
+      // Misma salida que Biblioteca.a_bibtex(): se escribe y se abre en cualquier editor.
+      const usadas = new Set();
+      const entradas = lista.map((a) => entradaBibtex(a, claveUnica(a, usadas)));
+      return entradas.length ? entradas.join("\n\n") + "\n" : "";
+    }
+
+    function descargarBib() {
+      const url = URL.createObjectURL(new Blob([bibtexDeArticulos(articulos)], { type: "application/x-bibtex;charset=utf-8" }));
+      const enlace = document.createElement("a");
+      enlace.href = url;
+      enlace.download = "busqueda.bib";
+      enlace.click();
+      URL.revokeObjectURL(url);
+    }
+
     $("formulario-busqueda").addEventListener("submit", async (evento) => {
       evento.preventDefault();
       const boton = $("boton-buscar");
       boton.disabled = true;
+      articulos = [];
+      $("descargar-bib").disabled = true;
       ocultar($("buscar-avisos"));
       mostrar($("buscar-estado"), "Buscando…", "aviso");
       try {
         const datos = await pedir(urlDeBusqueda(new FormData(evento.target)));
         pintarResultados(datos);
+        articulos = datos.articulos;
+        $("descargar-bib").disabled = articulos.length === 0;
       } catch (error) {
         $("resultados").textContent = "";
         mostrar($("buscar-estado"), error.message, "error");
@@ -463,6 +527,7 @@
     });
 
     $("descargar").addEventListener("click", descargarBibtex);
+    $("descargar-bib").addEventListener("click", descargarBib);
     cargarFuentes();
   </script>
 </body>

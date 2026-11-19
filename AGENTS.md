@@ -204,7 +204,8 @@ src/litmar/
                      GET / sirve la web desde el paquete (D-25)
   web/
     index.html       web de una sola página (CSS y JS embebidos, sin npm):
-                     búsqueda y revisión con rutas relativas; la sirve api.py
+                     búsqueda y revisión con rutas relativas; la sirve api.py;
+                     descarga la búsqueda en .bib desde el navegador (D-28)
 Dockerfile            Python 3.12 slim + uv fijado, dependencias antes del
                      código, sin dev, usuario app, secretos al arrancar (D-26)
 .dockerignore         excluye .env, .git, .venv, cachés, tests/, docs/ y
