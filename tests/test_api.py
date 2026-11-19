@@ -1,5 +1,7 @@
 """Tests de la API HTTP: sin red, sin claves y sin escribir archivos."""
 
+from importlib.resources import files
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -24,6 +26,20 @@ def _estado(hacer_articulo, pregunta: str) -> dict:
         "invalid": [],
         "warnings": [],
     }
+
+
+def test_index_sirve_la_web_desde_el_paquete():
+    respuesta = cliente.get("/")
+    assert respuesta.status_code == 200
+    assert respuesta.headers["content-type"].startswith("text/html")
+    html = respuesta.text
+    assert html == files("litmar").joinpath("web", "index.html").read_text(encoding="utf-8")
+    # La página llama solo a las rutas del contrato, con rutas relativas.
+    for fragmento in ('id="consulta"', 'id="pregunta"', '"/fuentes"', "/buscar?", '"/revisiones"'):
+        assert fragmento in html
+    assert "<script src=" not in html
+    assert "<link rel=" not in html
+    assert "fetch('http" not in html and 'fetch("http' not in html
 
 
 def test_salud_no_toca_nada():

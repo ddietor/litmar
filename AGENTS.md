@@ -156,7 +156,7 @@ del Mar, tres clases, imparte Roberto Bada). Las diapositivas están en `docs/`
 
 ```bash
 uv sync                          # instala todo, incluido el grupo dev (pytest, ruff, streamlit)
-uv run pytest                    # tests (sin red; 332)
+uv run pytest                    # tests (sin red; 333)
 uv run ruff check --fix          # lint (reglas E, W, F, I, UP, B; línea de 100)
 uv run ruff format               # formato
 uv run litmar --help             # CLI
@@ -170,6 +170,11 @@ uv run litmar ui                 # interfaz web (Streamlit)
 uv run litmar ui --server.headless true --server.port 8599   # sin navegador ni preguntas
 uv run litmar servir             # API HTTP en 127.0.0.1:8000; docs en /docs
 uv run litmar servir --host 0.0.0.0 --puerto 8000 --recargar
+docker build -t litmar .             # imagen: sin dev, secretos fuera
+docker run --rm --env-file .env -p 8000:8000 litmar
+docker compose up --build -d         # web en 8080, API en 8000
+docker compose logs -f web           # logs de nginx (o `api`)
+docker compose down                  # parar y quitar contenedores
 ```
 
 Python ≥ 3.12 (`.python-version`: 3.12). Gestor: **uv**, backend `uv_build`,
@@ -195,7 +200,19 @@ src/litmar/
                      --aprobar), servir (--host, --puerto, --recargar), ui
   api.py             app FastAPI: modelos Pydantic y rutas /salud, /fuentes,
                      /buscar y /revisiones (D-24; sin token, sin escrituras);
-                     reutiliza busqueda, flujo y agente; /docs publica el contrato
+                     reutiliza busqueda, flujo y agente; /docs publica el contrato;
+                     GET / sirve la web desde el paquete (D-25)
+  web/
+    index.html       web de una sola página (CSS y JS embebidos, sin npm):
+                     búsqueda y revisión con rutas relativas; la sirve api.py
+Dockerfile            Python 3.12 slim + uv fijado, dependencias antes del
+                     código, sin dev, usuario app, secretos al arrancar (D-26)
+.dockerignore         excluye .env, .git, .venv, cachés, tests/, docs/ y
+                     revisiones; NO excluye README.md (lo necesita uv_build)
+compose.yaml          servicios api (imagen propia, .env al arrancar, 8000) y
+                     web (nginx:1.27-alpine, 8080, dos montajes solo lectura)
+nginx/default.conf    sirve src/litmar/web en / y reenvía las rutas de la API
+                     a api:8000 con timeouts de 600 s (D-27)
   configuracion.py   FUENTES, fuentes_disponibles(), crear_fuente(nombre),
                      id_fuente()/nombre_fuente() («Europe PMC» ↔ «europepmc»)
   agente.py          agente revisor (Deep Agents): crear_agente(), Registro de lo
@@ -367,6 +384,9 @@ en `.env.example`.
   pestañas no cambian el orden de los widgets (los de «Búsqueda» van primero:
   `multiselect[0]`, los de «Revisión», `multiselect[1]`).
 - **`Retry-After: 0`** es válido: comprobar con `is None`, no con `or`.
+- **Docker + `uv run` con usuario no root**: el `.venv` lo crea root durante el
+  build, así que `uv run` como `app` intenta sincronizar y falla por permisos.
+  En el `CMD` se pone `/app/.venv/bin` en el `PATH` y se llama a `litmar` sin uv.
 - **FastAPI + ruff B008**: `Query(...)` en el valor por defecto de un parámetro
   dispara B008 («do not perform function call in argument defaults»). Declara
   los parámetros con `Annotated[str, Query(...)]` y deja el valor por defecto

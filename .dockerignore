@@ -1,0 +1,33 @@
+# Lo que NO debe entrar en la imagen de litmar.
+
+# Secretos: nunca se copian al contexto de construcción. La plantilla sí.
+.env
+.env.*
+!.env.example
+
+# Entorno local y metadatos de Git: binarios de otras máquinas que romperían
+# la instalación dentro de Linux (uv.lock manda sobre cualquier .venv local).
+.venv
+.git
+.gitignore
+
+# Cachés y artefactos generados en local.
+__pycache__/
+*.py[oc]
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+wheels/
+*.egg-info
+
+# Cosas que el servidor no necesita: tests, diapositivas y revisiones de clase.
+tests/
+docs/
+ejemplos/revisiones/
+
+# Configuración personal del editor y del agente.
+.claude/
+
+# OJO: README.md NO se ignora. pyproject.toml lo declara como `readme` y
+# uv lo necesita para construir el paquete en la primera capa de dependencias.

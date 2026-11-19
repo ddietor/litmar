@@ -1,0 +1,38 @@
+# Dos servicios: nuestra API y una web estática servida por nginx.
+# La web queda en http://localhost:8080 y llama a la API por rutas relativas;
+# nginx reenvía esas rutas al servicio `api` dentro de la red de compose.
+
+services:
+  # Bloque obligatorio: aquí se declaran los contenedores que arranca compose.
+
+  api:
+    # Nombre del servicio. Los demás contenedores lo encuentran por DNS como `api`.
+    build: .
+    # Construye la imagen usando el Dockerfile del directorio actual (el contexto).
+    command: ["litmar", "servir", "--host", "0.0.0.0"]
+    # Explícito para la clase: coincide con el CMD del Dockerfile. Se podría quitar.
+    env_file: .env
+    # Inyecta las variables de entorno AL ARRANCAR. Copia .env.example a .env antes
+    # (puede estar vacío). El .env nunca entra en la imagen: está en .dockerignore.
+    ports:
+      - "8000:8000"
+    # "puerto del host:puerto del contenedor". Así /docs se puede abrir también
+    # directamente en http://localhost:8000/docs para la práctica.
+
+  web:
+    # Segundo servicio: nginx, sin construir imagen propia.
+    image: nginx:1.27-alpine
+    # Imagen oficial, versión fijada (reproducibilidad) y variante alpine (pequeña).
+    ports:
+      - "8080:80"
+    # La web se abre en http://localhost:8080; dentro de nginx escucha en el 80.
+    volumes:
+      - ./src/litmar/web:/usr/share/nginx/html:ro
+      # La página se monta desde el repo y solo lectura: se ven los cambios sin
+      # reconstruir la imagen. En producción se copiaría dentro de la imagen.
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      # La configuración de nginx vive en el repo y se monta también solo lectura.
+    depends_on:
+      - api
+    # Ordena el arranque, pero NO espera a que la API esté lista: si tarda,
+    # una petición inmediata puede dar 502. Espera unos segundos o reintenta.

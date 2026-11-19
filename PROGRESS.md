@@ -8,20 +8,22 @@ el registro solo crece (entradas nuevas arriba).
 
 _Actualizado: 2026-11-19._
 
-- **`upstream/main`**: en `96dd812` («Fix PROGRESS.md after merging PR #15»),
-  sincronizado el 19/11. El trabajo nuevo está sin commitear en
-  `feature/3rd-class-development`: los ficheros que divergían de `upstream`
-  se restauraron a favor de `upstream/main` antes de añadir la API; por eso
-  `tests/test_ejemplo_resumir.py` ya no está en el árbol. **No se ha hecho
-  commit ni push** (el usuario no lo pidió).
+- **`upstream/main`**: en `96dd812` («Fix PROGRESS.md after merging PR #15»).
+  El HEAD local es `ab44139` («chore: sync with upstream main», hecho por el
+  usuario): incluye la resolución a favor de `upstream/main` y la API; por eso
+  `tests/test_ejemplo_resumir.py` ya no está en el árbol. Sin commitear quedan
+  la web (D-25), el Dockerfile (D-26) y su documentación. **No se ha hecho push**.
 - **Curso**: Clase 1 (*Busca*, 17/11) y Clase 2 (*Lee*, 18/11) completas
   respecto a las diapositivas; queda la votación de la Clase 2 (paso 7), en
   clase. La Clase 3 (*APIs, reproducibilidad y transferencia*, **19/11/2026**)
-  tiene sus diapositivas en `docs/Clase3.pdf` y su plan abajo: **hecho el
-  encargo 1** (API con FastAPI, contrato D-24), sin empezar los demás.
-- **Calidad**: 332 tests pasan, sin red; `ruff check` y `ruff format --check`
+  tiene sus diapositivas en `docs/Clase3.pdf` y su plan abajo: **hechos los
+  encargos 1 a 5** (API D-24, web D-25, Práctica 1, Dockerfile D-26 y compose
+  D-27). Ni el Dockerfile ni el compose se han podido ejecutar: Docker no está
+  instalado en la máquina del ensayo. Siguen la Práctica 2 y el checklist.
+- **Calidad**: 333 tests pasan, sin red; `ruff check` y `ruff format --check`
   en verde. La API se probó también con `litmar servir` de verdad: `/salud`,
-  `/fuentes`, `/docs` y `/openapi.json` responden 200.
+  `/fuentes`, `/docs` y `/openapi.json` responden 200. `uv build` incluye
+  `litmar/web/index.html` en la rueda.
 - **PRs abiertas**: ninguna.
 - **Funciona**:
   - modelo `Articulo` y `Biblioteca` (dedup por DOI, BibTeX, CSV, JSON);
@@ -55,6 +57,17 @@ _Actualizado: 2026-11-19._
     `/revisiones` (flujo o agente), con modelos Pydantic y `/docs`; sin token,
     sin escrituras en disco. Se levanta con `litmar servir [--host] [--puerto]
     [--recargar]`.
+  - web en `src/litmar/web/index.html` (D-25): un único HTML con CSS y JS,
+    servido por la API en `GET /`. Búsqueda con fuentes/año y DOI enlazados,
+    revisión con aviso de espera, informe y descarga de BibTeX en el navegador;
+    solo rutas relativas, sin CORS;
+  - `Dockerfile` y `.dockerignore` (D-26): Python 3.12 slim + uv fijado,
+    dependencias desde `uv.lock` antes del código y sin grupo dev, usuario
+    `app`, secretos fuera de la imagen. Sin construir (no hay Docker);
+  - `compose.yaml` y `nginx/default.conf` (D-27): servicios `api` (imagen propia,
+    `.env` al arrancar, puerto 8000) y `web` (nginx:1.27-alpine, puerto 8080).
+    nginx sirve `src/litmar/web` y reenvía las rutas del contrato a `api:8000`
+    con timeouts de 600 s. YAML validado, compose no ejecutado.
 
 ## Próximos pasos
 
@@ -65,11 +78,11 @@ Por orden de prioridad sugerido.
    Falta ver en una sesión real que `Stop` pide anotar el progreso cuando hay
    trabajo sin registrar (los casos se probaron a mano con un repo de prueba).
 1. [ ] **Clase 3** (19/11/2026): seguir el «Plan de la Clase 3» (abajo),
-   encargo a encargo y con el contrato propuesto antes del código. Hecho el 1
-   (API); el siguiente es el 2 (web en HTML/JS, que solo conoce el contrato de
-   la API). Para probar los encargos 4-6 hace falta Docker (no instalado en la
-   máquina del ensayo). Si la web se sirve desde otro dominio, decidir CORS
-   entonces (hoy no hace falta: mismo origen).
+   encargo a encargo y con el contrato propuesto antes del código. Hechos del 1
+   al 5; siguen la Práctica 2 (encargo 6) y el checklist (7), además del
+   cierre (8). Para probar la práctica hace falta Docker (no instalado en la
+   máquina del ensayo): compose y Dockerfile están escritos pero no verificados.
+   Pendiente de la clase: «del caso de uso al primer encargo» (d. 32).
 2. [ ] **Clase 2**: seguir el «Plan de la Clase 2» (abajo). El usuario lanza
    los prompts de las diapositivas uno a uno (ensayo). La Clase 2
    está construida; queda la votación (paso 7, en clase). Pendiente: probar con Gemini (solo se ha probado con
@@ -197,8 +210,9 @@ encargo», cómo seguir).
      está). Sección en el README.
    - Demo (d. 10): `uv run litmar servir --recargar`, `/docs`, `curl
      "http://127.0.0.1:8000/buscar?consulta=posidonia&n=2"`.
-2. [ ] **Web en HTML y JavaScript** (diapositiva 13) en
-   `src/litmar/web/index.html`. Prompt: «Crea una página web en
+2. [x] **Web en HTML y JavaScript** (diapositiva 13, 19/11) en
+   `src/litmar/web/index.html`; rutas y parámetros propuestos antes del código y
+   decididos en D-25. Prompt: «Crea una página web en
    src/litmar/web/index.html (HTML, CSS y JavaScript, sin npm ni compilación)
    que use nuestra API: búsqueda con fuentes y año mínimo, tabla con los DOI
    enlazados y un botón Revisar que llame a POST /revisiones, muestre el
@@ -214,11 +228,12 @@ encargo», cómo seguir).
      lee del paquete, no de la carpeta del repo) y test de que `/` devuelve la
      página. El informe llega en Markdown: decidir si se muestra como texto o
      con una conversión mínima sin librerías externas (sin npm).
-3. [ ] **Práctica 1** de los alumnos (d. 14, 20 min): `litmar servir`, web en
+3. [x] **Práctica 1** de los alumnos (d. 14, 19/11): `litmar servir`, web en
    `/` y `/docs`, F12 > Red, provocar un 422, pedir a la IA una mejora o una
    ruta nueva (exportar en BibTeX) con su test. Puede convenir tener hecha la
    ruta de BibTeX como referencia (sin integrarla).
-4. [ ] **Dockerfile** (diapositivas 19-20). Prompt: «Crea un Dockerfile para
+4. [x] **Dockerfile** (diapositivas 19-20, 19/11); decisiones en D-26, sin
+   construir (no hay Docker en la máquina). Prompt: «Crea un Dockerfile para
    litmar usando uv con la imagen oficial de Astral y Python 3.12 slim. Instala
    las dependencias desde uv.lock antes de copiar el código para aprovechar la
    caché, sin dependencias de desarrollo (pytest, ruff y Streamlit no hacen
@@ -238,7 +253,8 @@ encargo», cómo seguir).
      **no** `README.md` (`pyproject` lo declara y `uv_build` lo necesita).
      Comprobar que `uv run` como usuario `app` no intenta reescribir `.venv`
      (propiedad de root); si lo hace, `--no-sync` o `chown`.
-5. [ ] **compose.yaml con dos servicios** (diapositiva 24). Prompt: «Crea un
+5. [x] **compose.yaml con dos servicios** (diapositiva 24, 19/11); decisiones
+   en D-27, sin ejecutar (no hay Docker). Prompt: «Crea un
    compose.yaml con dos servicios: api (nuestra imagen, litmar servir en
    0.0.0.0, puerto 8000, .env al arrancar) y web (imagen oficial de nginx,
    puerto 8080) que sirva src/litmar/web y reenvíe a api las rutas de la API
@@ -309,7 +325,7 @@ contra esto.
 
 ## Registro de sesiones
 
-### 2026-11-19 — Sesión 4: API FastAPI (Clase 3, encargo 1)
+### 2026-11-19 — Sesión 4: API FastAPI y web (Clase 3, encargos 1 y 2)
 
 - El usuario avisó de un commit nuevo en `upstream` y pidió sincronizar primero
   y resolver a favor de `upstream/main`. `git fetch --all --prune` dejó
@@ -333,10 +349,41 @@ contra esto.
   uvicorn recibe `"litmar.api:app"` como texto para que `--recargar` funcione.
 - `tests/test_api.py`: 20 tests con `TestClient`, fuentes/modelo/revisores
   sustituidos, sin red, sin claves y sin escrituras en disco.
-- Documentación: README (sección «API HTTP»), D-24, AGENTS (comandos,
-  estructura y trampa de B008) y este fichero.
-- Comprobación: 332 tests, ruff y formato en verde; servidor real arrancado en
-  el puerto 8765 con `/salud`, `/fuentes`, `/docs` y `/openapi.json` a 200.
+- El usuario probó la API desde su terminal y vio un 404 al pedir `/health`:
+  la ruta del contrato es `/salud`. Se le dejó el servidor arrancado en segundo
+  plano para que interactuara y se cerró antes del encargo 2.
+- Encargo 2: antes de escribir código se presentaron las rutas y parámetros que
+  usaría la web (`GET /` nuevo, `/fuentes`, `/buscar`, `POST /revisiones`) y el
+  usuario dijo «adelante». Decisión D-25.
+- `src/litmar/web/index.html`: una sola página con CSS y JS embebidos. Pide las
+  fuentes a `GET /fuentes` al cargar, busca con `GET /buscar` (consulta,
+  `fuente` repetible, `n`, `desde`), muestra la tabla con DOI enlazado y los
+  avisos por fuente, y llama a `POST /revisiones` con el cuerpo del contrato.
+  Avisa de que tarda minutos, desactiva el botón, escapa el informe antes de
+  convertir `[doi:…]` en enlaces y descarga el BibTeX con `Blob` en el navegador.
+- `api.py`: nueva ruta `GET /` con `HTMLResponse`, leyendo el HTML desde el
+  paquete con `importlib.resources.files`. `uv build` confirma que
+  `litmar/web/index.html` entra en la rueda; no hizo falta tocar `pyproject.toml`.
+- Documentación: README (secciones «API HTTP» y «Web»), D-24, D-25, AGENTS
+  (comandos, estructura y trampas B008) y este fichero.
+- Comprobación: 333 tests (21 de API), ruff y formato en verde; servidor real
+  arrancado en el puerto 8765 con `/salud`, `/fuentes`, `/docs` y
+  `/openapi.json` a 200; búsqueda real (`posidonia`, n=1) sin errores.
+- Práctica 1 (encargo 3): se arrancó `litmar servir` en el 8000 y se abrieron
+  `/` y `/docs` en el navegador del usuario. Guion entregado: F12 > Red muestra
+  `GET /fuentes` al cargar y `GET /buscar?consulta=…&fuente=…&n=…&desde=…`
+  al buscar, con 200 y el JSON de artículos/errores. En `/docs`, `GET /buscar`
+  con `n=0` da 422 con `greater_than_equal` en `loc: ["query","n"]`.
+- Encargo 4: `Dockerfile` y `.dockerignore` con cada instrucción comentada
+  (D-26). No se pudo construir: Docker no está instalado. Sí se validó en un
+  directorio temporal que `uv sync --locked --no-dev --no-install-project`
+  funciona con solo `uv.lock`, `pyproject.toml` y `README.md` (62 paquetes, sin
+  pytest, ruff ni streamlit). Comprobación hecha en temporal. README añadió la sección «Docker».
+- Encargo 5: `compose.yaml` con `api` y `web` (nginx:1.27-alpine) y
+  `nginx/default.conf` (D-27). Se explicaron todas las líneas y los comandos
+  `up --build`, `ps`, `logs -f` y `down`. nginx sirve la web en `/` y reenvía
+  las seis rutas de la API a `api:8000` con timeouts de 600 s. Validado con
+  PyYAML; no ejecutado (sin Docker). README añadió la sección de compose.
 - Queda pendiente la decisión del usuario sobre commit y push (no pedidos).
 
 ### 2026-11-19 — Sesión 3: fusión de la PR #15 y repaso de la memoria

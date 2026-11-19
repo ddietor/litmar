@@ -225,3 +225,67 @@ id de tarea, pero aquí se hace a propósito para que la web pueda mostrar el
 estado de espera. Sin `--aprobar`: una pausa interactiva no tiene sentido en
 HTTP. Los parámetros de `Query` se declaran con `Annotated` para cumplir B008
 de ruff sin `# noqa`. Sustituye la propuesta de token del plan de la Clase 3.
+
+### D-25 — La web la sirve la API en `/`, desde el paquete — 2026-11-19
+Diapositiva 13 de la Clase 3. La web es un único `src/litmar/web/index.html`
+con CSS y JavaScript embebidos: sin npm, sin compilación y sin rutas extra para
+ficheros estáticos. `GET /` devuelve su contenido con `HTMLResponse`, leyéndolo
+con `importlib.resources.files("litmar")` en vez de abrir una ruta del repo;
+`uv build` incluye `litmar/web/index.html` en la rueda (comprobado), así que no
+hay que tocar `pyproject.toml`.
+
+La web solo conoce el contrato de D-24: `GET /fuentes` al cargar, `GET /buscar`
+y `POST /revisiones`. Todas las llamadas son relativas (`/buscar`, sin host),
+porque web y API comparten origen: no hay CORS ni direcciones escritas a mano en
+el código. `/salud` y `/docs` no los usa la web.
+
+El informe se muestra como texto escapado (`textContent` y luego `innerHTML`
+solo sobre el texto ya escapado), convirtiendo únicamente `[doi:10.…]` en
+enlaces cuando el DOI pasa una comprobación superficial. No se hace una
+conversión Markdown completa: no hay librerías nuevas y el texto viene de un
+modelo, así que usar `innerHTML` directo sería un riesgo. El BibTeX se descarga
+en el navegador con `Blob` + `<a download>`; la API sigue sin escribir en
+disco. Los errores se leen de `detail` (texto u objeto con `mensaje`/`errores`)
+y se muestran con su código HTTP; un `fetch` rechazado se explica como «no se
+pudo conectar con la API».
+
+Esta decisión prepara el encargo de Docker: cuando nginx sirva la web y reenvíe
+las rutas de la API al servicio `api`, las rutas relativas seguirán funcionando
+sin cambios.
+
+### D-26 — Dockerfile: caché por capas y sin `uv run` en tiempo de ejecución — 2026-11-19
+Diapositivas 19-20 de la Clase 3. La base es `python:3.12-slim` y uv se copia
+desde `ghcr.io/astral-sh/uv:0.13.8`, fijado a la versión que generó `uv.lock`
+(mejor que `latest` para reproducibilidad). Primero entran `uv.lock`,
+`pyproject.toml` y `README.md` — este último hace falta porque `pyproject` lo
+declara como `readme` — y se ejecuta `uv sync --locked --no-dev
+--no-install-project`; después se copia `src/` y se instala el proyecto. Así un
+cambio de código no rompe la capa de dependencias. No se usa
+`--mount=type=cache`: la caché de capas de Docker ya cumple lo que pide la
+diapositiva y evita depender de BuildKit.
+
+Se descarta `uv run litmar servir` como `CMD`: con el usuario no root, uv
+intentaría sincronizar un `.venv` propiedad de root. En su lugar se pone
+`/app/.venv/bin` en el `PATH` y se llama al script `litmar` directamente. El
+`CMD` usa `--host 0.0.0.0` porque `127.0.0.1` solo respondería dentro del
+contenedor. `.dockerignore` excluye secretos (`.env`, `.env.*` salvo
+`.env.example`), `.git`, `.venv`, cachés, `tests/`, `docs/` y
+`ejemplos/revisiones/`, pero **no** `README.md`.
+
+### D-27 — compose: nginx en `/` y proxy de rutas exactas a `api` — 2026-11-19
+Diapositivas 24-25 de la Clase 3. `compose.yaml` declara dos servicios. `api`
+construye el Dockerfile, recibe las variables con `env_file: .env` al arrancar
+y publica el 8000 (para `/docs` y para depurar). `web` usa `nginx:1.27-alpine`,
+publica el 8080 y monta dos ficheros solo lectura: `src/litmar/web` como
+directorio de ficheros estáticos y `nginx/default.conf` como configuración.
+
+nginx reenvía **las rutas concretas del contrato** (`/salud`, `/fuentes`,
+`/buscar`, `/revisiones`, `/docs` y `/openapi.json`) a `http://api:8000` usando
+el nombre del servicio (DNS de compose), en vez de reenviar todo. Así lo estático
+sigue en `/` y no hace falta cambiar las rutas relativas de la web (D-25).
+`proxy_read_timeout` y `proxy_send_timeout` son 600 s: el valor por defecto de
+nginx (60 s) cortaría una revisión larga con 504. `depends_on` solo ordena el
+arranque, no espera a que la API esté lista.
+
+No se ha podido verificar con `docker compose`: Docker no está instalado en la
+máquina del ensayo. Se validó la sintaxis del YAML con PyYAML.

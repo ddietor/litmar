@@ -6,15 +6,17 @@ aquí solo se valida la entrada, se traducen los errores a códigos HTTP y se
 devuelve JSON. No se guarda nada en disco.
 
 La API no pide token: está pensada para un uso interno, detrás de la web que
-se sirve en el mismo origen. Para exponerla a Internet, primero habría que
-añadir autenticación, límites de uso y HTTPS.
+sirve ella misma en `/` (D-25), en el mismo origen. Para exponerla a Internet,
+primero habría que añadir autenticación, límites de uso y HTTPS.
 """
 
 from __future__ import annotations
 
+from importlib.resources import files
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, field_validator
 
 from litmar import agente, flujo
@@ -147,6 +149,13 @@ def _nombres_fuentes(identificadores: list[str]) -> list[str]:
 
 
 # --- Rutas ----------------------------------------------------------------------
+
+
+@app.get("/", response_class=HTMLResponse)
+def index() -> HTMLResponse:
+    """Servir la web desde el paquete (también funciona instalada con uv)."""
+    html = files("litmar").joinpath("web", "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(html)
 
 
 @app.get("/salud", response_model=SaludSalida)

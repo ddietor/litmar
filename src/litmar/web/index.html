@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>litmar · literatura científica</title>
+  <style>
+    :root {
+      --fondo: #f5f7fa;
+      --tarjeta: #ffffff;
+      --texto: #1d2939;
+      --suave: #667085;
+      --borde: #d0d5dd;
+      --acento: #0f6d8c;
+      --acento-oscuro: #0b5269;
+      --aviso: #fffaeb;
+      --aviso-borde: #fec84b;
+      --error: #fef3f2;
+      --error-borde: #f04438;
+      --ok: #ecfdf3;
+      --ok-borde: #12b76a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--fondo);
+      color: var(--texto);
+      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+
+    header {
+      background: var(--acento-oscuro);
+      color: white;
+      padding: 1.5rem max(1rem, calc((100% - 1100px) / 2));
+    }
+
+    header h1 { margin: 0; font-size: 1.8rem; }
+    header p { margin: .25rem 0 0; opacity: .85; }
+    header a { color: #b9e6f5; }
+
+    main {
+      max-width: 1100px;
+      margin: 1.5rem auto;
+      padding: 0 1rem 3rem;
+      display: grid;
+      gap: 1.5rem;
+    }
+
+    section {
+      background: var(--tarjeta);
+      border: 1px solid var(--borde);
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 1px 3px #10182814;
+    }
+
+    h2 { margin: 0 0 .25rem; font-size: 1.35rem; }
+    .pista { margin: 0 0 1.25rem; color: var(--suave); font-size: .92rem; }
+
+    fieldset {
+      border: 1px solid var(--borde);
+      border-radius: 8px;
+      margin: 0 0 1rem;
+      padding: .75rem 1rem;
+    }
+    legend { padding: 0 .4rem; font-weight: 600; font-size: .9rem; }
+
+    .fuentes { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; }
+    .fuentes label { display: inline-flex; align-items: center; gap: .35rem; font-size: .93rem; }
+    .fuentes label.sin-configurar { color: var(--suave); text-decoration: line-through; }
+
+    .campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; }
+    .campo { display: flex; flex-direction: column; gap: .3rem; }
+    .campo.ancho { grid-column: 1 / -1; }
+
+    label { font-weight: 600; font-size: .9rem; }
+    input, textarea, select {
+      width: 100%;
+      padding: .6rem .7rem;
+      border: 1px solid var(--borde);
+      border-radius: 8px;
+      font: inherit;
+      color: inherit;
+      background: white;
+    }
+    textarea { min-height: 5rem; resize: vertical; }
+    input:focus, textarea:focus, select:focus { outline: 2px solid #83c8dd; outline-offset: 1px; }
+
+    button {
+      margin-top: 1rem;
+      padding: .7rem 1.4rem;
+      border: 0;
+      border-radius: 8px;
+      background: var(--acento);
+      color: white;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover:not(:disabled) { background: var(--acento-oscuro); }
+    button:disabled { opacity: .55; cursor: progress; }
+
+    .aviso-lento {
+      margin: .75rem 0 0;
+      padding: .7rem .9rem;
+      border: 1px solid var(--aviso-borde);
+      border-left-width: 5px;
+      border-radius: 8px;
+      background: var(--aviso);
+      font-size: .92rem;
+    }
+
+    .panel {
+      display: none;
+      margin-top: 1rem;
+      padding: .7rem .9rem;
+      border-radius: 8px;
+      font-size: .92rem;
+      white-space: pre-wrap;
+    }
+    .panel.visible { display: block; }
+    .panel.error { background: var(--error); border: 1px solid var(--error-borde); border-left-width: 5px; }
+    .panel.aviso { background: var(--aviso); border: 1px solid var(--aviso-borde); border-left-width: 5px; }
+    .panel.ok { background: var(--ok); border: 1px solid var(--ok-borde); border-left-width: 5px; }
+
+    .tabla { overflow-x: auto; margin-top: 1rem; }
+    table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+    th, td { text-align: left; padding: .55rem .6rem; border-bottom: 1px solid var(--borde); vertical-align: top; }
+    th { color: var(--suave); font-size: .82rem; text-transform: uppercase; letter-spacing: .03em; }
+    td.centrado { text-align: center; white-space: nowrap; }
+    a { color: var(--acento); }
+
+    #revision-resultado { display: none; margin-top: 1rem; }
+    #revision-resultado.visible { display: block; }
+    #informe {
+      max-height: 32rem;
+      overflow: auto;
+      padding: 1rem;
+      background: #f9fafb;
+      border: 1px solid var(--borde);
+      border-radius: 8px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: .92rem/1.6 ui-monospace, "SFMono-Regular", Consolas, monospace;
+    }
+    #informe a { overflow-wrap: anywhere; }
+    #descargar { margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>litmar</h1>
+    <p>Busca literatura científica y revisa una pregunta citando solo artículos reales.
+       <a href="/docs">Ver la documentación de la API</a></p>
+  </header>
+
+  <main>
+    <section aria-labelledby="titulo-busqueda">
+      <h2 id="titulo-busqueda">Búsqueda</h2>
+      <p class="pista">Varias fuentes a la vez, sin duplicados por DOI.</p>
+
+      <form id="formulario-busqueda">
+        <div class="campos">
+          <div class="campo ancho">
+            <label for="consulta">Consulta</label>
+            <input id="consulta" name="consulta" type="search" placeholder="posidonia carbon" required>
+          </div>
+        </div>
+
+        <fieldset>
+          <legend>Fuentes</legend>
+          <div class="fuentes" id="fuentes-busqueda"></div>
+        </fieldset>
+
+        <div class="campos">
+          <div class="campo">
+            <label for="n">Máximo por fuente</label>
+            <input id="n" name="n" type="number" min="1" max="50" value="10" required>
+          </div>
+          <div class="campo">
+            <label for="desde">Desde el año (opcional)</label>
+            <input id="desde" name="desde" type="number" min="1900" max="2100" placeholder="2020">
+          </div>
+        </div>
+
+        <button id="boton-buscar" type="submit">Buscar</button>
+      </form>
+
+      <div id="buscar-estado" class="panel" role="status" aria-live="polite"></div>
+      <div id="buscar-avisos" class="panel" role="status" aria-live="polite"></div>
+
+      <div class="tabla">
+        <table>
+          <thead>
+            <tr><th>Año</th><th>Citas</th><th>Autores</th><th>Título</th><th>DOI</th></tr>
+          </thead>
+          <tbody id="resultados"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section aria-labelledby="titulo-revision">
+      <h2 id="titulo-revision">Revisión</h2>
+      <p class="pista">Un informe con citas comprobadas y el BibTeX de lo citado.</p>
+
+      <form id="formulario-revision">
+        <div class="campos">
+          <div class="campo ancho">
+            <label for="pregunta">Pregunta de investigación</label>
+            <textarea id="pregunta" name="pregunta" placeholder="¿Qué papel tiene la posidonia en el secuestro de carbono?" required></textarea>
+          </div>
+          <div class="campo">
+            <label for="modo">Modo</label>
+            <select id="modo" name="modo">
+              <option value="flujo">Flujo (pasos fijos)</option>
+              <option value="agente">Agente (busca por su cuenta)</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label for="n-revision">Máximo de artículos</label>
+            <input id="n-revision" name="n" type="number" min="1" max="10" value="6" required>
+          </div>
+          <div class="campo">
+            <label for="desde-revision">Desde el año (opcional)</label>
+            <input id="desde-revision" name="desde" type="number" min="1900" max="2100" placeholder="2020">
+          </div>
+        </div>
+
+        <fieldset>
+          <legend>Fuentes</legend>
+          <div class="fuentes" id="fuentes-revision"></div>
+        </fieldset>
+
+        <p class="aviso-lento">
+          <strong>Una revisión tarda varios minutos.</strong>
+          No cierres la pestaña ni recargues la página mientras aparece «Revisando…».
+        </p>
+
+        <button id="boton-revisar" type="submit">Revisar</button>
+      </form>
+
+      <div id="revision-estado" class="panel" role="status" aria-live="polite"></div>
+      <div id="revision-error" class="panel" role="alert" aria-live="assertive"></div>
+
+      <div id="revision-resultado">
+        <h3>Informe</h3>
+        <pre id="informe"></pre>
+        <p class="pista" id="citados"></p>
+        <button id="descargar" type="button">Descargar BibTeX</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Rutas relativas: la web y la API se sirven en el mismo origen.
+    // Si mañana la web estuviera en otro dominio, harían falta CORS y la URL completa.
+    const POR_DEFECTO = ["openalex", "europepmc"];
+    const $ = (id) => document.getElementById(id);
+    let bibtex = "";
+
+    async function pedir(url, opciones) {
+      let respuesta;
+      try {
+        respuesta = await fetch(url, opciones);
+      } catch (error) {
+        throw new Error("No se pudo conectar con la API. Comprueba que `litmar servir` sigue en marcha.");
+      }
+      let datos;
+      try {
+        datos = await respuesta.json();
+      } catch (error) {
+        throw new Error(`La API devolvió ${respuesta.status} pero no un JSON válido.`);
+      }
+      if (!respuesta.ok) {
+        // `detail` puede ser texto o un objeto con `mensaje` y `errores` (D-24).
+        const detalle = datos.detail;
+        const mensaje = typeof detalle === "string"
+          ? detalle
+          : [detalle?.mensaje, ...(detalle?.errores ?? [])].filter(Boolean).join("\n");
+        throw new Error(`${respuesta.status}: ${mensaje || "error sin detalle"}`);
+      }
+      return datos;
+    }
+
+    function mostrar(contenedor, texto, tipo) {
+      contenedor.textContent = texto;
+      contenedor.className = `panel visible ${tipo}`;
+    }
+
+    function ocultar(contenedor) {
+      contenedor.textContent = "";
+      contenedor.className = "panel";
+    }
+
+    async function cargarFuentes() {
+      try {
+        const datos = await pedir("/fuentes");
+        for (const destino of ["fuentes-busqueda", "fuentes-revision"]) {
+          const contenedor = $(destino);
+          contenedor.textContent = "";
+          for (const fuente of datos.fuentes) {
+            const etiqueta = document.createElement("label");
+            if (!fuente.disponible) etiqueta.className = "sin-configurar";
+            const casilla = document.createElement("input");
+            casilla.type = "checkbox";
+            casilla.name = "fuente";
+            casilla.value = fuente.id;
+            casilla.checked = fuente.disponible && POR_DEFECTO.includes(fuente.id);
+            casilla.disabled = !fuente.disponible;
+            casilla.title = fuente.disponible ? fuente.descripcion : "Falta su configuración en el .env";
+            etiqueta.append(casilla, document.createTextNode(fuente.nombre));
+            contenedor.append(etiqueta);
+          }
+        }
+      } catch (error) {
+        mostrar($("buscar-estado"), error.message, "error");
+      }
+    }
+
+    function fuentesMarcadas(id) {
+      return [...$(id).querySelectorAll("input:checked")].map((casilla) => casilla.value);
+    }
+
+    function anio(value) {
+      return value.trim() === "" ? null : Number(value);
+    }
+
+    function urlDeBusqueda(datos) {
+      const parametros = new URLSearchParams();
+      parametros.set("consulta", datos.get("consulta").trim());
+      for (const fuente of fuentesMarcadas("fuentes-busqueda")) parametros.append("fuente", fuente);
+      parametros.set("n", datos.get("n"));
+      const desde = anio(datos.get("desde"));
+      if (desde !== null) parametros.set("desde", desde);
+      return `/buscar?${parametros}`;
+    }
+
+    function celda(texto, clase) {
+      const td = document.createElement("td");
+      td.textContent = texto;
+      if (clase) td.className = clase;
+      return td;
+    }
+
+    function pintarResultados(datos) {
+      const cuerpo = $("resultados");
+      cuerpo.textContent = "";
+      if (!datos.articulos.length) {
+        const fila = cuerpo.insertRow();
+        const celdaVacia = celda("Sin resultados. Prueba con otras palabras o fuentes.");
+        celdaVacia.colSpan = 5;
+        fila.append(celdaVacia);
+      }
+      for (const articulo of datos.articulos) {
+        const fila = document.createElement("tr");
+        fila.append(
+          celda(String(articulo.year)),
+          celda(articulo.citations === null ? "—" : String(articulo.citations), "centrado"),
+          celda(articulo.authors.join("; ")),
+          celda(articulo.title)
+        );
+        const tdDoi = document.createElement("td");
+        const enlace = document.createElement("a");
+        enlace.href = "https://doi.org/" + encodeURI(articulo.doi);
+        enlace.target = "_blank";
+        enlace.rel = "noopener noreferrer";
+        enlace.textContent = articulo.doi;
+        tdDoi.append(enlace);
+        fila.append(tdDoi);
+        cuerpo.append(fila);
+      }
+      if (datos.fuentes_fallidas.length) {
+        const avisos = datos.errores.map((error, i) => `${datos.fuentes_fallidas[i]}: ${error}`).join("\n");
+        mostrar($("buscar-avisos"), `Algunas fuentes fallaron; se muestran las demás:\n${avisos}`, "aviso");
+      } else {
+        ocultar($("buscar-avisos"));
+      }
+      mostrar($("buscar-estado"), `${datos.articulos.length} artículos encontrados.`, "ok");
+    }
+
+    function escapar(texto) {
+      const elemento = document.createElement("div");
+      elemento.textContent = texto;
+      return elemento.innerHTML;
+    }
+
+    function enlazarDois(texto) {
+      // El texto ya está escapado: solo se convierte `[doi:10.…]` cuando parece un DOI.
+      return escapar(texto).replace(/\[doi:([^\]]+)\]/g, (todo, doi) =>
+        /^10\.\S+\/\S+$/.test(doi)
+          ? `<a href="https://doi.org/${encodeURI(doi)}" target="_blank" rel="noopener noreferrer">doi:${doi}</a>`
+          : todo
+      );
+    }
+
+    function descargarBibtex() {
+      const url = URL.createObjectURL(new Blob([bibtex], { type: "application/x-bibtex;charset=utf-8" }));
+      const enlace = document.createElement("a");
+      enlace.href = url;
+      enlace.download = "revision.bib";
+      enlace.click();
+      URL.revokeObjectURL(url);
+    }
+
+    $("formulario-busqueda").addEventListener("submit", async (evento) => {
+      evento.preventDefault();
+      const boton = $("boton-buscar");
+      boton.disabled = true;
+      ocultar($("buscar-avisos"));
+      mostrar($("buscar-estado"), "Buscando…", "aviso");
+      try {
+        const datos = await pedir(urlDeBusqueda(new FormData(evento.target)));
+        pintarResultados(datos);
+      } catch (error) {
+        $("resultados").textContent = "";
+        mostrar($("buscar-estado"), error.message, "error");
+      } finally {
+        boton.disabled = false;
+      }
+    });
+
+    $("formulario-revision").addEventListener("submit", async (evento) => {
+      evento.preventDefault();
+      const datosFormulario = new FormData(evento.target);
+      const desde = anio(datosFormulario.get("desde"));
+      const cuerpo = {
+        pregunta: datosFormulario.get("pregunta").trim(),
+        modo: datosFormulario.get("modo"),
+        fuente: fuentesMarcadas("fuentes-revision"),
+        n: Number(datosFormulario.get("n"))
+      };
+      if (desde !== null) cuerpo.desde = desde;
+
+      const boton = $("boton-revisar");
+      boton.disabled = true;
+      $("revision-resultado").className = "";
+      ocultar($("revision-error"));
+      mostrar($("revision-estado"), "Revisando… Esto puede tardar varios minutos.", "aviso");
+      try {
+        const datos = await pedir("/revisiones", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(cuerpo)
+        });
+        bibtex = datos.bibtex;
+        $("informe").innerHTML = enlazarDois(datos.informe);
+        $("citados").textContent = datos.citados.length
+          ? `Citados: ${datos.citados.join(", ")}`
+          : "No se citó ningún artículo.";
+        if (datos.avisos.length) $("citados").textContent += ` Avisos: ${datos.avisos.join(" ")}`;
+        $("revision-resultado").className = "visible";
+        mostrar($("revision-estado"), `Revisión terminada (${datos.modo}).`, "ok");
+      } catch (error) {
+        bibtex = "";
+        $("revision-resultado").className = "";
+        mostrar($("revision-error"), error.message, "error");
+        ocultar($("revision-estado"));
+      } finally {
+        boton.disabled = false;
+      }
+    });
+
+    $("descargar").addEventListener("click", descargarBibtex);
+    cargarFuentes();
+  </script>
+</body>
+</html>

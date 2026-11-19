@@ -193,6 +193,77 @@ el código; `--host` y `--puerto` admiten los valores habituales de uvicorn.
 Los modelos de entrada y salida son Pydantic, así que `/docs` muestra los
 ejemplos y los errores de validación (422) sin escribir una línea de cliente.
 
+## Web
+
+La propia API sirve una página en <http://127.0.0.1:8000/> con el mismo
+comando; no hay que levantar otro servidor:
+
+```bash
+uv run litmar servir
+```
+
+Es un único fichero, `src/litmar/web/index.html`, con el CSS y el JavaScript
+dentro: sin npm, sin compilación y sin ficheros estáticos extra. `GET /` lo lee
+del paquete, así que también funciona con litmar instalado.
+
+- **Búsqueda:** escribe la consulta, marca fuentes (las obtiene de `GET
+  /fuentes`), elige `n` y `desde`, y pulsa «Buscar». La tabla trae año, citas,
+  autores, título y el DOI enlazado a doi.org. Si alguna fuente falla, se ven
+  sus resultados y un aviso con el motivo; si fallan todas, un error claro.
+- **Revisión:** escribe la pregunta, elige modo, fuentes, `n` y `desde`, y pulsa
+  «Revisar». Antes avisa de que **una revisión tarda varios minutos** y mientras
+  espera deja el botón desactivado con el estado «Revisando…». Al terminar
+  muestra el informe con los DOI convertidos en enlaces y un botón que descarga
+  el BibTeX en el navegador; el servidor no escribe ningún fichero.
+- La página solo llama a `/fuentes`, `/buscar` y `/revisiones` con **rutas
+  relativas**: no lleva la dirección del servidor escrita y no necesita CORS,
+  porque la web y la API comparten origen. Para ver qué pide y qué devuelve,
+  abre las herramientas del navegador (F12 > Red).
+
+## Docker
+
+El `Dockerfile` construye una imagen con Python 3.12 slim y uv fijado a la
+versión que generó `uv.lock`:
+
+```bash
+docker build -t litmar .
+docker run --rm --env-file .env -p 8000:8000 litmar
+```
+
+- **Caché:** primero se copian `uv.lock`, `pyproject.toml` y `README.md` y se
+  instalan las dependencias; el código entra después. Un cambio en `src/` no
+  reinstala las librerías.
+- **Sin desarrollo:** `uv sync --locked --no-dev` deja fuera pytest, ruff y
+  Streamlit (el extra `ui` no se pide). `uv.lock` garantiza las mismas versiones.
+- **Secretos:** `.env` no se copia a la imagen (`.dockerignore` lo excluye junto
+  con `.git`, `.venv`, cachés, `tests/` y `docs/`). Las variables se pasan al
+  arrancar con `--env-file .env`.
+- **Seguridad:** el servidor corre con el usuario `app`, no root, y ejecuta
+  directamente el script de `.venv/bin` para que uv no intente reescribir el
+  entorno al arrancar.
+- La API escucha en `0.0.0.0:8000` dentro del contenedor. Para ver la web y la
+  documentación: <http://localhost:8000/> y <http://localhost:8000/docs>.
+
+### Con docker compose
+
+Con `compose.yaml` se levantan la API y una web nginx con un solo comando. Copia
+antes `.env.example` a `.env` (puede quedar vacío):
+
+```bash
+docker compose up --build        # construir y arrancar (añade -d para segundo plano)
+docker compose ps                # estado de los dos servicios
+docker compose logs -f api       # logs de la API en vivo
+docker compose logs -f web       # logs de nginx
+docker compose down              # parar y quitar los contenedores
+```
+
+La web está en <http://localhost:8080> y la documentación de la API sigue en
+<http://localhost:8000/docs>. nginx sirve `src/litmar/web` en `/` y reenvía
+`/salud`, `/fuentes`, `/buscar`, `/revisiones`, `/docs` y `/openapi.json` al
+servicio `api` por su nombre, con tiempo de espera de 10 minutos para las
+revisiones. La configuración está en `nginx/default.conf`, montada solo lectura.
+Si la API se cae, nginx devuelve 502 y la web lo muestra como error.
+
 ## Revisión de literatura con un modelo de lenguaje
 
 `litmar revisar` responde a una pregunta de investigación con un informe que
