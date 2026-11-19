@@ -87,117 +87,6 @@ que es el que leen las librerías de LangChain. Sustituye a la idea de
 `GEMINI_API_KEY` de la Clase 1. Las diapositivas también nombran
 `CROSSREF_MAILTO`, así que no se renombra a `LITMAR_EMAIL`.
 
-<<<<<<< HEAD
-### D-15 · `resumir`: devolución de `None`, campos en español y modelo inyectado — 2026-11-18
-`resumir(articulo, pregunta, modelo)` recibe el chat model como argumento: la
-lógica no elige proveedor, no lee claves y se prueba con un modelo falso. Sin
-resumen (`abstract` vacío o solo espacios) devuelve `None` **antes** de enlazar
-el esquema o invocar el modelo. Descartado: devolver un `ResumenArticulo` con
-campos vacíos (la relevancia tiene que estar entre 1 y 5, y un objeto así
-parecería un resumen real) o lanzar una excepción (la ausencia de resumen es
-normal en varias fuentes). Los campos del esquema Pydantic se llaman `objetivo`,
-`metodo`, `hallazgos`, `relevancia` y `limitaciones`: son los que piden el
-encargo y la diapositiva 11, y forman parte del prompt que lee el modelo. Es una
-excepción puntual a D-2 (atributos en inglés) limitada a este esquema.
-
-### D-16 · `crear_modelo`: limitador de LangChain y claves por proveedor — 2026-11-18
-`crear_modelo()` usa `init_chat_model` con un `InMemoryRateLimiter` de
-`LLAMADAS_POR_MINUTO = 10` y cubo de tamaño 1: como mucho una petición cada 6
-segundos, por debajo del cupo por minuto del plan gratuito de Gemini. El
-limitador se pasa al modelo, así que LangChain lo aplica también a
-`with_structured_output` y a los reintentos. Descartado: envolver el modelo en
-una clase propia con `sleep` (más código y no cubre todas las vías de llamada) y
-poner el límite solo en `resumir` (el flujo y el agente también llaman al
-modelo).
-
-Dependencias nuevas: `langchain` (la fábrica `init_chat_model`),
-`langchain-google-genai` y `langchain-anthropic` (los dos proveedores de la
-diapositiva 12). Van en las dependencias normales para que cambiar de proveedor
-en el `.env` no exija instalar nada más; se descartaron extras opcionales.
-
-La fábrica lee `os.environ` (o un diccionario `entorno` inyectado), sin
-`load_dotenv()` dentro: la CLI ya carga el `.env` en `litmar.main()` (D-8) y así
-los tests no leen el `.env` real. La clave se elige según el proveedor con un
-mapa fijo y el error indica qué línea añadir al `.env`. No hay nombres de modelo
-ni claves escritos en el código. Se comprueba por introspección que
-`BaseChatModel` aplica el limitador también a `with_structured_output`.
-
-La clave se pasa a `init_chat_model(..., api_key=clave)`: los tests con fábrica
-falsa no detectaron que `ChatGoogleGenerativeAI` lee `GOOGLE_API_KEY` de
-`os.environ` y fallaba al construirse con `entorno`. Pasarla de forma explícita
-mantiene el parámetro `entorno` útil y evita depender del entorno del proceso.
-La comprobación manual construyó `ChatGoogleGenerativeAI` y `ChatAnthropic` con
-el diccionario, sin red.
-
-### D-17 · Ejemplo: ids de CLI → nombres canónicos con `nombre_fuente` — 2026-11-18
-`ejemplos/resumir.py` pasaba `("openalex", "europepmc")` a
-`buscar_en_fuentes`, que espera nombres de `configuracion.FUENTES`
-(`"OpenAlex"`, `"Europe PMC"`): `crear_fuente` indexa
-`_CONSTRUCTORES[nombre]` y respondía «fuente desconocida». La CLI ya resuelve
-esto en `_fuentes()` con `nombre_fuente()`, así que el ejemplo reutiliza esa
-misma función: `FUENTES = tuple(map(nombre_fuente, ("openalex", "europepmc")))`.
-Descartado escribir los nombres a mano (`("OpenAlex", "Europe PMC")`): es más
-corto, pero no reutiliza la conversión del repo del curso y no se adapta si
-cambian los nombres. Tampoco hizo falta sincronizar el fork ni cambiar la base:
-la rama ya partía de `upstream/main` (`2b5422e`); el fallo era del ejemplo, no
-del historial. Añadido un test que comprueba que `FUENTES` son nombres válidos;
-los tests anteriores falsificaban `buscar_en_fuentes` y no lo veían.
-
-### D-18 · Flujo LangGraph: estado de datos, dependencias por closure y citas en corchetes — 2026-11-18
-Seis nodos exactos (`planificar`, `buscar`, `filtrar`, `resumir_articulos`,
-`sintetizar`, `verificar_citas`). Usan LLM `planificar`, `resumir_articulos` y
-`sintetizar`; `buscar` y `filtrar` reutilizan `buscar_en_fuentes` y `Biblioteca`, y
-`verificar_citas` comprueba los DOI con `normalizar_doi` y un conjunto de
-seleccionados. El estado `EstadoRevision` (`TypedDict`) lleva solo datos: el
-modelo y la fábrica de fuentes se pasan a `crear_grafo(modelo, crear=...)` y los
-nodos los capturan por `functools.partial`. Así el mismo grafo sirve a CLI, UI o
-API y se prueba con dobles. Descartado guardar el modelo en el estado: no es
-serializable, ensucia los `stream()` y mezcla configuración con datos.
-
-Formato de cita elegido: `[10.xxxx/yyy]`, extraído con una expresión regular y
-normalizado antes de comparar. Descartado Markdown `[texto](url)`: obligaría a
-distinguir texto de DOI y daría más falsos positivos. Si una cita no está entre
-los seleccionados, `verificar_citas` devuelve `reescribir` y `sintetizar` recibe
-la lista de DOI inválidos como feedback; tope de 3 escrituras (1 + 2
-reescrituras) comprobado en `decidir()`, con `recursion_limit=20` como red de
-seguridad. Al agotar los reintentos se guarda el informe y el BibTeX de los DOI
-válidos con aviso, en lugar de abortar: el usuario conserva lo verificable.
-
-`--n` por defecto 6 y `filtrar` recorta a 6: con 6 resúmenes el presupuesto es
-1 planificación + 6 resúmenes + 1 síntesis + 2 reescrituras = 10 llamadas, el
-límite del `InMemoryRateLimiter` (D-16). `langgraph` pasa de dependencia
-transitiva de `langchain` a dependencia directa en `pyproject.toml`.
-
-### D-19 · Modo agente: herramientas acotadas, registro de DOI y aprobación — 2026-11-18
-Segundo modo de `revisar` con Deep Agents 0.7.39, además del flujo de D-18.
-`herramientas.py` expone una sola `buscar_articulos` para todas las fuentes (más
-`listar_fuentes`) construida por `crear_herramientas(...)`: reutiliza
-`crear_fuente`, acepta id o nombre canónico y lleva el límite de 10 resultados,
-el filtro de fuentes y el de año en el código, no en el prompt. Los fallos se
-devuelven como texto (HTTP → código de estado; `ValueError` propio → mensaje)
-sin URL ni cabeceras, para que el modelo pueda probar otra fuente. El resultado
-se deduplica por DOI antes de entregarlo. Descartado crear una herramienta por
-fuente: no se adapta a las fuentes nuevas que lleguen por PR.
-
-`agente.py` inyecta modelo, fábrica de fuentes y límites en `crear_agente()`,
-igual que D-18, y devuelve `(agente, registro)`. El subagente `buscador` usa las
-mismas herramientas en su propio contexto y se invoca con `task`. La lista de
-tareas es `TodoListMiddleware` de `langchain.agents.middleware` (en deepagents
-0.7 no se exporta desde `deepagents`); es opt-in desde v0.7. El agente no tiene
-herramientas de escritura real ni `execute`: la CLI guarda la respuesta final en
-`informe.md`. Descartado que el agente escriba el fichero con `write_file`: el
-backend por defecto es en memoria y el formato debe ser idéntico al del flujo
-para poder compararlos.
-
-Con `--aprobar` se instala `InMemorySaver` e `interrupt_on` para
-`buscar_articulos`, que el subagente hereda. La CLI muestra la llamada y ofrece
-aprobar / editar (JSON) / rechazar con `Command(resume=...)` y el mismo
-`thread_id`; sin terminal, rechaza. Al terminar, la CLI reutiliza
-`flujo.extraer_citas` y genera el `.bib` solo con los DOI que el registro dice
-que entregaron las herramientas; los inventados se avisan y se excluyen. Así se
-mantiene el principio de D-18: comprobar con código lo que es comprobable, sin
-pedirle al modelo que vigile sus propias citas.
-=======
 ### D-15 · LangChain y los dos proveedores como dependencias normales — 2026-11-18
 `langchain` (por `init_chat_model`), `langchain-core`, `langchain-google-genai`
 y `langchain-anthropic` van en `dependencies`, no en un extra opcional como
@@ -304,4 +193,35 @@ usa solo la relevancia y se avisa. `0` sigue significando cero citas conocidas.
 El flujo calcula la puntuación con código; en modo agente, la herramienta expone
 la tasa y el ajuste, y el prompt pide aplicar la misma regla. Se sustituye
 D-17, que ordenaba por citas totales.
->>>>>>> upstream/main
+
+### D-24 — API HTTP: contrato, errores y sin token — 2026-11-19
+Diapositiva 9 de la Clase 3. `src/litmar/api.py` es otro punto de entrada, como
+la CLI y la UI: valida la entrada, traduce errores a HTTP y reutiliza
+`buscar_en_fuentes`, `flujo.revisar` y `agente.revisar`. No duplica lógica ni
+escribe archivos. Contrato acordado **antes** del código y publicado en `/docs`:
+
+| Ruta | Entrada | Salida | Errores |
+| --- | --- | --- | --- |
+| `GET /salud` | — | `{"estado": "ok"}` | — |
+| `GET /fuentes` | — | id, nombre, descripción y `disponible` de cada fuente | — |
+| `GET /buscar` | `consulta`, `fuente` (repetible, defecto `openalex`), `n` 1–50, `desde` 1900–2100 | artículos (mismos campos que el JSON de `Biblioteca`), `errores` y `fuentes_fallidas` | 422 validación o fuente no configurada; 502 si fallan todas |
+| `POST /revisiones` | `pregunta`, `modo` (`flujo`/`agente`), `fuente`, `n` ≤ `MAX_SELECCIONADOS`, `desde` | `informe` y `bibtex` como texto, más `citados` y `avisos` | 422 validación; 503 si falta configuración del LLM; 502 si falla el proveedor |
+
+Una fuente que falla no echa a perder la búsqueda: se devuelve 200 con el aviso
+en `errores`, porque `buscar_en_fuentes` ya recoge los errores por fuente (D-1).
+El 503 incluye el mensaje de `ErrorDeConfiguracion` (qué línea poner en el
+`.env`); en el 502 solo se devuelve el *tipo* de la excepción, nunca el mensaje
+del proveedor, que puede arrastrar la petición o la clave (§7).
+
+**Sin token.** El plan de la clase proponía `LITMAR_API_TOKEN` opcional con
+`Authorization: Bearer`; el usuario decidió dejar la autenticación fuera de este
+encargo: no hay `401` ni variable de token. La API se sirve en `127.0.0.1` y
+está pensada para un uso interno, detrás de la web del encargo 2 (mismo origen,
+sin CORS). Exponerla a Internet exigiría antes autenticación, límites de uso y
+HTTPS: queda como deuda explícita en el README.
+
+`POST /revisiones` es síncrona y tarda minutos; en producción se devolvería un
+id de tarea, pero aquí se hace a propósito para que la web pueda mostrar el
+estado de espera. Sin `--aprobar`: una pausa interactiva no tiene sentido en
+HTTP. Los parámetros de `Query` se declaran con `Annotated` para cumplir B008
+de ruff sin `# noqa`. Sustituye la propuesta de token del plan de la Clase 3.

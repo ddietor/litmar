@@ -156,27 +156,20 @@ del Mar, tres clases, imparte Roberto Bada). Las diapositivas están en `docs/`
 
 ```bash
 uv sync                          # instala todo, incluido el grupo dev (pytest, ruff, streamlit)
-<<<<<<< HEAD
-uv run pytest                    # tests (sin red; 265; de 3 a 45 s según caché de imports)
-=======
-uv run pytest                    # tests (sin red; ~299, ~2 s)
->>>>>>> upstream/main
+uv run pytest                    # tests (sin red; 332)
 uv run ruff check --fix          # lint (reglas E, W, F, I, UP, B; línea de 100)
 uv run ruff format               # formato
 uv run litmar --help             # CLI
 uv run litmar buscar "posidonia carbon" --fuente openalex,europepmc --desde 2020 --bibtex refs.bib
 uv run litmar buscar "consulta" -n 10 --guardar biblioteca.json
 uv run litmar exportar biblioteca.json --bibtex refs.bib
-<<<<<<< HEAD
-uv run litmar revisar "¿Qué papel tiene la posidonia en el carbono azul?"  # informe + BibTeX citado
-uv run litmar revisar "pregunta" --modo agente --aprobar  # agente, pausa antes de buscar
-=======
 uv run litmar revisar "pregunta" --modo agente --aprobar   # agente; pide permiso antes de buscar
 uv run litmar revisar "pregunta"  # revisión con LLM (necesita LITMAR_MODELO): informe y BibTeX
                                  # en ejemplos/revisiones/<fecha_hora_pregunta>/ (ignorado en git)
->>>>>>> upstream/main
 uv run litmar ui                 # interfaz web (Streamlit)
 uv run litmar ui --server.headless true --server.port 8599   # sin navegador ni preguntas
+uv run litmar servir             # API HTTP en 127.0.0.1:8000; docs en /docs
+uv run litmar servir --host 0.0.0.0 --puerto 8000 --recargar
 ```
 
 Python ≥ 3.12 (`.python-version`: 3.12). Gestor: **uv**, backend `uv_build`,
@@ -198,29 +191,11 @@ src/litmar/
                      duplicar y recoge errores por fuente. La usan CLI y UI.
                      mensaje_de_error(): error de una fuente sin la petición
   cli.py             argparse: buscar (--fuente, --desde, --guardar, --bibtex,
-<<<<<<< HEAD
-                     salida en tabla), exportar, revisar (flujo o agente;
-                     informe y BibTeX de lo citado), ui
-  agente.py          crear_agente(modelo, crear=..., aprobar=...): Deep Agents
-                     con TodoListMiddleware, subagente buscador, InMemorySaver e
-                     interrupt_on; devuelve (agente, RegistroBusquedas)
-  herramientas.py    crear_herramientas(): `buscar_articulos` (una para todas
-                     las fuentes, tope 10, errores como texto) y `listar_fuentes`;
-                     RegistroBusquedas guarda los DOI entregados al modelo
-  flujo.py           EstadoRevision (TypedDict), seis nodos de LangGraph,
-                     extraer_citas(), decidir() y crear_grafo(modelo, crear=...);
-                     verificar_citas comprueba DOI por código y reescribe ≤2
-                     veces; `__init__.py` exporta crear_grafo
-  configuracion.py   FUENTES, fuentes_disponibles(), crear_fuente(nombre),
-                     id_fuente()/nombre_fuente() («Europe PMC» ↔ «europepmc»)
-  llm.py             crear_modelo(): LITMAR_MODELO + init_chat_model, clave por
-                     proveedor y limitador InMemoryRateLimiter (10 llamadas/min)
-  resumen.py         ResumenArticulo (Pydantic) y resumir(articulo, pregunta,
-                     modelo) con with_structured_output; sin resumen → None
-  ui.py              Streamlit: filas(), app()
-=======
                      salida en tabla), exportar, revisar (--modo flujo|agente,
-                     --aprobar), ui
+                     --aprobar), servir (--host, --puerto, --recargar), ui
+  api.py             app FastAPI: modelos Pydantic y rutas /salud, /fuentes,
+                     /buscar y /revisiones (D-24; sin token, sin escrituras);
+                     reutiliza busqueda, flujo y agente; /docs publica el contrato
   configuracion.py   FUENTES, fuentes_disponibles(), crear_fuente(nombre),
                      id_fuente()/nombre_fuente() («Europe PMC» ↔ «europepmc»)
   agente.py          agente revisor (Deep Agents): crear_agente(), Registro de lo
@@ -242,7 +217,6 @@ src/litmar/
                      con with_structured_output; sin resumen → None, sin llamar al modelo
   ui.py              Streamlit: filas(), app() con pestañas busqueda() y revision();
                      la revisión reutiliza flujo.revisar / agente.revisar
->>>>>>> upstream/main
   fuentes/
     base.py          Fuente (ABC): buscar(consulta, n, *, desde=None) abstracto;
                      _admite (validez + año); _get/_get_json con reintentos
@@ -309,8 +283,6 @@ en `.env.example`.
   comentarios y mensajes en **español**; **atributos de clase en inglés**
   (`title`, `authors`, `api_key`, `max_retries`…). Petición expresa del usuario.
   (`arxiv.py` usa nombres en inglés: deuda conocida, ver `PROGRESS.md`.)
-  Excepción D-15: los campos de `ResumenArticulo` van en español porque forman
-  parte del esquema que lee el modelo.
 - **Commits**: mensajes en inglés, en imperativo («Add…», «Fix…»), con cuerpo si
   hace falta explicar el porqué. Merges de PRs: «Merge pull request #N from
   usuario/rama». Terminan con la línea `Co-Authored-By` del agente si la usa.
@@ -353,18 +325,8 @@ en `.env.example`.
   `litmar ui --server.headless true`.
 - **argparse**: `nargs=REMAINDER` en un subcomando no captura opciones que
   empiezan por `--`; por eso `litmar ui` usa `parse_known_args`.
-- **LangGraph `stream_mode="updates"`**: cada fragmento es `{nombre_del_nodo:
-  actualización parcial}`; la CLI imprime el nombre del nodo y su `traza` y va
-  acumulando las actualizaciones. Sin `config={"recursion_limit": 20}` un bucle
-  condicional acaba en `GraphRecursionError` (D-18).
-- **`buscar_en_fuentes` espera nombres canónicos**, no ids de CLI:
-  `crear_fuente` indexa `_CONSTRUCTORES["OpenAlex"]`, no `"openalex"`. La CLI
-  convierte los ids con `nombre_fuente()`; un script propio debe hacer lo mismo
-  (D-17). Si no, salen avisos «fuente desconocida» y no se busca nada.
 - **`.env` solo se carga en `litmar.main()`** (la entrada del comando), no en
-  `cli.main(argv)` ni en `crear_modelo()`: así los tests no leen el `.env` real.
-  Desde un script propio hay que llamar a `load_dotenv()` o pasar un diccionario
-  a `crear_modelo(entorno)`.
+  `cli.main(argv)`: así los tests no leen el `.env` real.
 - **`ruff format` también formatea los bloques de Python del README** (alinea
   distinto los comentarios). Es normal ver el README en el diff tras formatear.
 - **Salida estructurada con Claude**: `with_structured_output` de
@@ -405,6 +367,10 @@ en `.env.example`.
   pestañas no cambian el orden de los widgets (los de «Búsqueda» van primero:
   `multiselect[0]`, los de «Revisión», `multiselect[1]`).
 - **`Retry-After: 0`** es válido: comprobar con `is None`, no con `or`.
+- **FastAPI + ruff B008**: `Query(...)` en el valor por defecto de un parámetro
+  dispara B008 («do not perform function call in argument defaults»). Declara
+  los parámetros con `Annotated[str, Query(...)]` y deja el valor por defecto
+  como literal (o una constante de módulo para listas, que además evita B006).
 - **`Biblioteca.guardar`** deja el JSON con permisos `0600` (lo crea
   `NamedTemporaryFile`). Conocido, pendiente.
 - **Merges de PRs desde local**: hacer push a `main` de una rama que contiene el
@@ -414,22 +380,6 @@ en `.env.example`.
   automático): hacer push a la rama de un fork ajeno y borrar ficheros de la
   memoria privada del agente. No intentes rodearlo: explica qué querías hacer y
   deja que el usuario decida.
-- **`TodoListMiddleware` en deepagents 0.7**: no se exporta desde `deepagents`;
-  se importa de `langchain.agents.middleware`. Es opt-in desde v0.7: sin pasarlo
-  en `middleware=[...]` el agente no tiene `write_todos` y no planifica.
-- **Human-in-the-loop**: necesita checkpointer (`InMemorySaver()`) y el mismo
-  `thread_id` al reanudar con `Command(resume=...)`. Con el modo `batched`
-  (default), `interrupt.value["action_requests"]` trae varias llamadas y las
-  decisiones van por posición. Los subagentes declarativos heredan
-  `interrupt_on` salvo que declaren el suyo.
-- **Modelos falsos con Deep Agents**: `FakeListChatModel` de esta versión solo
-  acepta `str`, no `AIMessage` con `tool_calls`. Para simular llamadas a
-  herramientas hace falta una subclase de `BaseChatModel` con `_generate` y
-  `bind_tools`; si es Pydantic, declara los atributos que uses como campos.
-- **Deep Agents incluye por defecto herramientas de ficheros y `task`** (el
-  backend por defecto guarda en memoria, no en disco): el system prompt debe
-  decir explícitamente que el informe se devuelva como texto y no se escriba
-  con `write_file`.
 
 ## 10. Cómo trabaja el usuario
 
@@ -474,7 +424,10 @@ en `.env.example`.
    Anota esas propuestas en «Pendiente de terceros» de `PROGRESS.md`.
 6. Para PRs duplicadas: ciérralas (`gh pr close N --comment …`) explicando por
    qué se eligió otra e invitando a aportar sus mejoras sobre la existente.
-7. Tras el formateo con ruff (D-13), una PR basada en el `main` anterior puede
+7. Si la PR toca `PROGRESS.md`, sus cambios describen la máquina del alumno
+   (rama local, `stash`, commit de su `main`): al resolver conflictos, deja un
+   solo «Estado actual» cierto para el repositorio y quita lo que solo valía allí.
+8. Tras el formateo con ruff (D-13), una PR basada en el `main` anterior puede
    chocar solo por formato: pide al alumno `uv run ruff format`, o fórmatealo tú
    al integrar.
 

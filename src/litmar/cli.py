@@ -4,42 +4,20 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
-<<<<<<< HEAD
-import json
-import shutil
-import subprocess
-import sys
-import uuid
-=======
 import re
 import shutil
 import subprocess
 import sys
 import unicodedata
->>>>>>> upstream/main
 from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
 
-from langgraph.types import Command
-
-from litmar.agente import LIMITE_PASOS, crear_agente
 from litmar.articulo import Articulo
 from litmar.biblioteca import Biblioteca
 from litmar.busqueda import buscar_en_fuentes
 from litmar.configuracion import FUENTES, id_fuente, nombre_fuente
-<<<<<<< HEAD
-from litmar.flujo import (
-    LIMITE_RECURSION,
-    biblioteca_de_citas,
-    crear_grafo,
-    estado_inicial,
-    extraer_citas,
-)
-from litmar.llm import crear_modelo
-=======
 from litmar.flujo import MAX_SELECCIONADOS
->>>>>>> upstream/main
 
 ANCHO_AUTORES = 20
 # Cada `litmar revisar` guarda su informe y su BibTeX en un subdirectorio propio.
@@ -119,16 +97,6 @@ def _parser() -> argparse.ArgumentParser:
 
     revisar = comandos.add_parser(
         "revisar",
-<<<<<<< HEAD
-        help="Responder a una pregunta con un informe que solo cita artículos reales",
-    )
-    revisar.add_argument("pregunta", type=_consulta)
-    revisar.add_argument(
-        "--modo",
-        choices=("flujo", "agente"),
-        default="flujo",
-        help="Modo de revisión: flujo (pasos fijos) o agente (decide el modelo)",
-=======
         help="Revisión de literatura con un modelo de lenguaje: informe y BibTeX de lo citado",
         description="Necesita LITMAR_MODELO y la clave de su proveedor en el .env.",
     )
@@ -139,24 +107,11 @@ def _parser() -> argparse.ArgumentParser:
         default="flujo",
         help="flujo: pasos fijos con LangGraph (por defecto); agente: decide el modelo, "
         "con Deep Agents",
->>>>>>> upstream/main
     )
     revisar.add_argument(
         "--aprobar",
         action="store_true",
-<<<<<<< HEAD
-        help="Pedir permiso antes de cada búsqueda (solo con --modo agente)",
-    )
-    revisar.add_argument(
-        "-n",
-        "--n",
-        type=_positivo,
-        default=6,
-        metavar="N",
-        help="Máximo de artículos seleccionados (6)",
-=======
         help="Solo con --modo agente: pedir permiso antes de cada búsqueda",
->>>>>>> upstream/main
     )
     revisar.add_argument(
         "--fuente",
@@ -166,8 +121,6 @@ def _parser() -> argparse.ArgumentParser:
         help="Fuentes separadas por comas (openalex,europepmc)",
     )
     revisar.add_argument(
-<<<<<<< HEAD
-=======
         "-n",
         "--n",
         type=_hasta_maximo,
@@ -177,34 +130,34 @@ def _parser() -> argparse.ArgumentParser:
         f"(6; máximo {MAX_SELECCIONADOS})",
     )
     revisar.add_argument(
->>>>>>> upstream/main
         "--desde", type=int, metavar="AÑO", help="Solo artículos publicados ese año o después"
     )
     revisar.add_argument(
         "--informe",
         type=Path,
-<<<<<<< HEAD
-        default=Path("informe.md"),
-        metavar="ARCHIVO.md",
-        help="Archivo donde guardar el informe (informe.md)",
-=======
         metavar="ARCHIVO.md",
         help=f"Dónde guardar el informe (por defecto, {CARPETA_REVISIONES}/<fecha_pregunta>/"
         "revision.md)",
->>>>>>> upstream/main
     )
     revisar.add_argument(
         "--bibtex",
         type=Path,
-<<<<<<< HEAD
-        default=Path("citas.bib"),
-        metavar="ARCHIVO.bib",
-        help="Archivo donde guardar el BibTeX de lo citado (citas.bib)",
-=======
         metavar="ARCHIVO.bib",
         help=f"Dónde guardar el BibTeX de lo citado (por defecto, {CARPETA_REVISIONES}/"
         "<fecha_pregunta>/revision.bib)",
->>>>>>> upstream/main
+    )
+
+    servir = comandos.add_parser(
+        "servir",
+        help="Levantar la API HTTP con uvicorn",
+        description="Documentación interactiva en http://127.0.0.1:8000/docs.",
+    )
+    servir.add_argument("--host", default="127.0.0.1", help="Dirección de escucha (127.0.0.1)")
+    servir.add_argument("--puerto", type=int, default=8000, help="Puerto (8000)")
+    servir.add_argument(
+        "--recargar",
+        action="store_true",
+        help="Reiniciar el servidor cuando cambie el código (desarrollo)",
     )
 
     comandos.add_parser(
@@ -284,93 +237,6 @@ def _exportar(args: argparse.Namespace) -> int:
     return 0
 
 
-<<<<<<< HEAD
-def _texto(contenido: object) -> str:
-    """Extrae el texto de un mensaje, tanto si es str como una lista de bloques."""
-    if isinstance(contenido, str):
-        return contenido
-    if isinstance(contenido, list):
-        return "".join(
-            bloque.get("text", "")
-            for bloque in contenido
-            if isinstance(bloque, dict) and bloque.get("type") == "text"
-        )
-    return str(contenido) if contenido else ""
-
-
-def _pedir_decisiones(interrupciones: list) -> list[dict]:
-    """Muestra las llamadas pendientes y pregunta: aprobar, editar o rechazar."""
-    decisiones: list[dict] = []
-    for interrupcion in interrupciones:
-        for peticion in interrupcion.value["action_requests"]:
-            args = peticion["args"]
-            print("\nEl agente quiere ejecutar:")
-            print(f"  {peticion['name']}({json.dumps(args, ensure_ascii=False)})")
-            while True:
-                try:
-                    opcion = input("¿Aprobar, editar o rechazar? [a/e/r] ").strip().lower()
-                except EOFError:
-                    opcion = "r"  # sin terminal: no se autoriza nada por defecto
-                if opcion in ("", "a", "s", "aprobar"):
-                    decisiones.append({"type": "approve"})
-                    break
-                if opcion in ("r", "n", "rechazar"):
-                    decisiones.append(
-                        {"type": "reject", "message": "El usuario ha rechazado la búsqueda."}
-                    )
-                    break
-                if opcion in ("e", "editar"):
-                    try:
-                        nuevos = json.loads(input("Nuevos argumentos (JSON): "))
-                        if not isinstance(nuevos, dict):
-                            raise ValueError("debe ser un objeto JSON")
-                    except (EOFError, ValueError) as exc:
-                        print(f"  No se pudo editar ({exc}). Prueba de nuevo.")
-                        continue
-                    decisiones.append({"type": "edit", "args": nuevos})
-                    break
-                print("  Escribe a (aprobar), e (editar) o r (rechazar).")
-    print()
-    return decisiones
-
-
-def _procesar_fragmento(fragmento: dict) -> tuple[list, list[dict] | None]:
-    """Imprime tareas y llamadas del agente; devuelve mensajes y decisiones si hay pausa."""
-    mensajes: list = []
-    decisiones: list[dict] | None = None
-    for nombre, actualizacion in fragmento.items():
-        if nombre == "__interrupt__":
-            decisiones = _pedir_decisiones(actualizacion)
-            continue
-        if not isinstance(actualizacion, dict):
-            continue
-        for tarea in actualizacion.get("todos", []):
-            print(f"> tarea           [{tarea.get('status', '?')}] {tarea.get('content', '')}")
-        for mensaje in actualizacion.get("messages", []):
-            mensajes.append(mensaje)
-            tipo = getattr(mensaje, "type", "")
-            if tipo == "ai":
-                for llamada in getattr(mensaje, "tool_calls", []):
-                    herramienta = llamada.get("name", "?")
-                    argumentos = llamada.get("args", {})
-                    if herramienta == "write_todos":
-                        continue  # ya se ha mostrado la lista de tareas
-                    if herramienta == "task":
-                        destino = argumentos.get("subagent_type", "subagente")
-                        print(f"→ task({destino}): {argumentos.get('description', '')}")
-                    else:
-                        print(f"→ {herramienta}({json.dumps(argumentos, ensure_ascii=False)})")
-            elif tipo == "tool":
-                resultado = " ".join(_texto(mensaje.content).split())
-                print(f"> {getattr(mensaje, 'name', 'herramienta'):<17} {_recortar(resultado, 90)}")
-    return mensajes, decisiones
-
-
-def _revisar_agente(args: argparse.Namespace) -> int:
-    """Ejecuta el agente, atiende las aprobaciones y guarda informe y BibTeX."""
-    agente, registro = crear_agente(
-        crear_modelo(),
-=======
 def nombre_carpeta(pregunta: str, ahora: datetime) -> str:
     """«2026-11-18_1530_como-afecta-el-calentamiento-a-las-praderas»: fecha, hora y pregunta.
 
@@ -465,105 +331,10 @@ def _con_agente(args: argparse.Namespace, modelo):
     return agente.revisar(
         modelo,
         args.pregunta,
->>>>>>> upstream/main
         fuentes=args.fuente,
         n=args.n,
         desde=args.desde,
         aprobar=args.aprobar,
-<<<<<<< HEAD
-    )
-    config = {"configurable": {"thread_id": uuid.uuid4().hex}, "recursion_limit": LIMITE_PASOS}
-    entrada = {"messages": [{"role": "user", "content": args.pregunta}]}
-    mensajes: list = []
-    while True:
-        interrumpido = False
-        for fragmento in agente.stream(entrada, config=config, stream_mode="updates"):
-            nuevos, decisiones = _procesar_fragmento(fragmento)
-            mensajes.extend(nuevos)
-            if decisiones is not None:
-                # El mismo `thread_id` reanuda el grafo justo donde se paró.
-                entrada = Command(resume={"decisions": decisiones})
-                interrumpido = True
-                break
-        if not interrumpido:
-            break
-
-    informe = ""
-    for mensaje in reversed(mensajes):
-        if getattr(mensaje, "type", "") == "ai":
-            texto = _texto(mensaje.content).strip()
-            if texto:
-                informe = texto
-                break
-    if not informe:
-        print("Aviso: el agente no devolvió texto para el informe.", file=sys.stderr)
-
-    # Comprobación con código: solo entran en el .bib los DOI que dieron las herramientas.
-    citas = extraer_citas(informe)
-    permitidos = set(registro.articulos)
-    invalidas = [doi for doi in citas if doi not in permitidos]
-    biblioteca = Biblioteca(registro.articulos[doi] for doi in citas if doi in permitidos)
-    avisos = list(registro.avisos)
-    if invalidas:
-        avisos.append(
-            "Citas sin respaldo de las herramientas: "
-            + ", ".join(invalidas)
-            + ". No se han incluido en el BibTeX."
-        )
-    if not citas:
-        avisos.append("El informe no contiene citas con DOI.")
-    print(
-        f"> verificar_citas   {len(biblioteca)} citas válidas"
-        + (f", {len(invalidas)} inválidas" if invalidas else "")
-    )
-    _guardar_revision(args, informe, biblioteca, avisos)
-    return 0
-
-
-def _revisar_flujo(args: argparse.Namespace) -> int:
-    """Ejecuta el flujo de pasos fijos y guarda informe y BibTeX de lo citado."""
-    grafo = crear_grafo(crear_modelo())
-    estado = estado_inicial(args.pregunta, args.fuente, args.n, args.desde)
-    resultado: dict = {}
-    for fragmento in grafo.stream(
-        estado,
-        config={"recursion_limit": LIMITE_RECURSION},
-        stream_mode="updates",
-    ):
-        for nombre, actualizacion in fragmento.items():
-            print(f"> {nombre:<18} {actualizacion.get('traza', '')}".rstrip())
-            resultado.update(actualizacion)
-    _guardar_revision(
-        args,
-        resultado.get("informe", ""),
-        biblioteca_de_citas(resultado),
-        resultado.get("avisos", []),
-    )
-    return 0
-
-
-def _guardar_revision(
-    args: argparse.Namespace, informe: str, citas: Biblioteca, avisos: Iterable[str]
-) -> None:
-    """Escribe los dos archivos con el mismo formato en ambos modos."""
-    Path(args.informe).write_text(informe, encoding="utf-8")
-    citas.exportar_bibtex(args.bibtex)
-    for aviso in avisos:
-        print(f"Aviso: {aviso}", file=sys.stderr)
-    sufijo = "" if len(citas) == 1 else "s"
-    print(f"Informe: {args.informe}")
-    print(f"BibTeX:  {args.bibtex} ({len(citas)} artículo{sufijo})")
-
-
-def _revisar(args: argparse.Namespace) -> int:
-    """Valida las opciones comunes y delega en el modo elegido."""
-    if args.informe.resolve() == args.bibtex.resolve():
-        raise ValueError("el informe y el archivo BibTeX deben ser distintos")
-    if args.aprobar and args.modo != "agente":
-        print("Error: --aprobar solo se usa con --modo agente.", file=sys.stderr)
-        return 1
-    return _revisar_agente(args) if args.modo == "agente" else _revisar_flujo(args)
-=======
         mostrar=_mostrar,
         decidir=_decidir,
     )
@@ -589,7 +360,14 @@ def _decidir(accion: dict) -> dict:
     except EOFError:  # sin terminal interactiva: no se busca nada sin permiso
         return {"type": "reject", "message": "No se pudo pedir aprobación."}
     return {"type": "approve"}
->>>>>>> upstream/main
+
+
+def _servir(args: argparse.Namespace) -> int:
+    """Levantar la API. La app se pasa como texto para que `--recargar` funcione."""
+    import uvicorn
+
+    uvicorn.run("litmar.api:app", host=args.host, port=args.puerto, reload=args.recargar)
+    return 0
 
 
 def _lanzar_ui(opciones: list[str]) -> int:
@@ -631,6 +409,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.comando == "revisar":
             return _revisar(args)
+        if args.comando == "servir":
+            return _servir(args)
         return _buscar(args) if args.comando == "buscar" else _exportar(args)
     except (OSError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)

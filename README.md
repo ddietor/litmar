@@ -45,14 +45,6 @@ Europe PMC, arXiv y PANGAEA. Para resumir con un modelo de lenguaje hacen falta
 `.env` no se sube a git. Las variables que ya estén definidas en el entorno
 tienen prioridad sobre las del fichero.
 
-Para el modelo de lenguaje se usan estas otras variables:
-
-| Variable | Para qué |
-| --- | --- |
-| `LITMAR_MODELO` | `proveedor:modelo` que crear_modelo() pasa a `init_chat_model` |
-| `GOOGLE_API_KEY` | Clave de Google AI Studio, si el proveedor es `google_genai` |
-| `ANTHROPIC_API_KEY` | Clave de Anthropic, si el proveedor es `anthropic` |
-
 ## Interfaz web
 
 ```bash
@@ -103,13 +95,6 @@ uv run litmar buscar "deep learning" -n 20 --guardar biblioteca.json
 
 # Generar referencias para LaTeX u otras herramientas compatibles
 uv run litmar exportar biblioteca.json --bibtex referencias.bib
-
-# Preguntar al modelo y guardar un informe que solo cita artículos reales
-uv run litmar revisar "¿Qué papel tiene la posidonia en el carbono azul?"
-
-# La misma pregunta con un agente que decide qué buscar, con aprobación
-uv run litmar revisar "¿Qué papel tiene la posidonia en el carbono azul?" \
-    --modo agente --aprobar
 ```
 
 - **Combinar resultados:** si el JSON ya existe, los resultados se combinan con
@@ -155,6 +140,58 @@ uv run litmar buscar "bibliometrics" -n 5
 $env:OPENALEX_API_KEY = "tu-clave"
 uv run litmar buscar "bibliometrics" -n 5
 ```
+
+## API HTTP
+
+litmar también se expone como API con FastAPI. Es otro punto de entrada, como la
+CLI y la interfaz web: las tres usan las mismas funciones de búsqueda y revisión.
+
+```bash
+uv run litmar servir                    # http://127.0.0.1:8000
+uv run litmar servir --host 0.0.0.0 --puerto 8000 --recargar
+```
+
+La documentación interactiva está en <http://127.0.0.1:8000/docs> y el contrato
+en formato JSON, en `/openapi.json`. `--recargar` reinicia el servidor al cambiar
+el código; `--host` y `--puerto` admiten los valores habituales de uvicorn.
+
+| Ruta | Qué hace | Códigos |
+| --- | --- | --- |
+| `GET /salud` | Comprueba que el servidor responde | 200 |
+| `GET /fuentes` | Lista las fuentes y cuáles están configuradas | 200 |
+| `GET /buscar` | Busca en varias fuentes, sin duplicar DOI | 200, 422, 502 |
+| `POST /revisiones` | Devuelve informe y BibTeX de una pregunta | 200, 422, 502, 503 |
+
+- **`GET /buscar`**: `consulta` (obligatoria), `fuente` (repetible; por defecto
+  `openalex`), `n` (1–50, por defecto 10) y `desde` (año mínimo, 1900–2100).
+  Acepta tanto ids (`europepmc`) como nombres canónicos (`Europe PMC`). Si falla
+  una fuente, la respuesta sigue siendo 200 y el error aparece en `errores` y
+  `fuentes_fallidas`; solo si fallan todas es 502.
+
+  ```bash
+  curl "http://127.0.0.1:8000/buscar?consulta=posidonia&fuente=openalex&fuente=europepmc&n=2&desde=2020"
+  ```
+
+- **`POST /revisiones`**: cuerpo JSON con `pregunta` (obligatoria), `modo`
+  (`flujo`, por defecto, o `agente`), `fuente` (lista), `n` (≤ 10) y `desde`.
+  Devuelve `informe` en Markdown, `bibtex` de lo citado, `citados` y `avisos`.
+  **No guarda archivos**: para eso está `litmar revisar`. Es síncrona y puede
+  tardar varios minutos; la web debe mostrar que está esperando. Sin aprobación
+  interactiva. Si falta `LITMAR_MODELO` o su clave, responde 503 con un mensaje
+  que dice qué añadir al `.env`.
+
+  ```bash
+  curl -X POST http://127.0.0.1:8000/revisiones \
+    -H 'Content-Type: application/json' \
+    -d '{"pregunta": "¿Qué papel tiene la posidonia?", "modo": "flujo"}'
+  ```
+
+- **Sin autenticación**: no hay token ni `401`. Escucha en `127.0.0.1` y está
+  pensada para uso interno, sirviendo la web desde el mismo origen. Antes de
+  exponerla a Internet hacen falta autenticación, límites de uso y HTTPS.
+
+Los modelos de entrada y salida son Pydantic, así que `/docs` muestra los
+ejemplos y los errores de validación (422) sin escribir una línea de cliente.
 
 ## Revisión de literatura con un modelo de lenguaje
 
@@ -345,208 +382,6 @@ if resumen:
     print(resumen.relevance, resumen.findings)
 ```
 
-## Modelo de lenguaje
-
-`crear_modelo()` lee `LITMAR_MODELO` (con forma `proveedor:modelo`) y devuelve un
-chat model de LangChain. No hay nombres de modelo ni claves en el código: cambiar
-de modelo es cambiar una línea del `.env`. Los proveedores integrados son
-`google_genai` (lee `GOOGLE_API_KEY`) y `anthropic` (lee `ANTHROPIC_API_KEY`). Si
-falta la clave, el error dice qué línea añadir al `.env`.
-
-El modelo lleva un limitador de **10 llamadas por minuto sin ráfagas** para no
-superar el cupo del plan gratuito de Gemini. La CLI carga el `.env` antes de
-crear el modelo; desde Python, usa `dotenv.load_dotenv()` o pasa un diccionario
-a `crear_modelo(entorno)`.
-
-```python
-from litmar import crear_modelo, resumir
-
-modelo = crear_modelo()
-resumen = resumir(articulo, "¿Cómo afecta el calentamiento a la posidonia?", modelo)
-```
-
-Las dependencias son `langchain` (para `init_chat_model`), `langgraph` (para el
-flujo y el agente), `deepagents` (para el modo agente) y los paquetes de los dos
-proveedores, `langchain-google-genai` y `langchain-anthropic`.
-
-## Resumen estructurado
-
-`resumir(articulo, pregunta, modelo)` le pasa a un modelo de lenguaje el resumen
-de un artículo y la pregunta de investigación, y devuelve un `ResumenArticulo`
-(Pydantic) con `objetivo`, `metodo`, `hallazgos`, `relevancia` (de 1 a 5) y
-`limitaciones`. Cada campo lleva una descripción que el modelo lee como parte
-del prompt, y `relevancia` se valida automáticamente.
-
-```python
-from litmar import resumir
-
-# `modelo` es un chat model de LangChain: se pasa como argumento, así que
-# puedes cambiar de proveedor sin tocar esta función.
-resumen = resumir(articulo, "¿Cómo afecta el calentamiento a la posidonia?", modelo)
-if resumen is not None:
-    print(resumen.relevancia, resumen.hallazgos)
-```
-
-Si el artículo no tiene resumen (`abstract` vacío), devuelve `None` **sin
-llamar al modelo**: no le pedimos que invente lo que no está en los datos. Esta
-parte se comprueba con un modelo falso, sin clave de API ni red.
-
-### Ejemplo completo
-
-`ejemplos/resumir.py` busca tres artículos sobre posidonia y resume cada uno
-respecto a una pregunta. Es el punto de partida de la práctica: cambia `CONSULTA`
-y `PREGUNTA` por tu tema, y cambia `LITMAR_MODELO` en el `.env` para comparar
-modelos. Las fuentes se convierten con `nombre_fuente()` —igual que hace la
-CLI— para pasar nombres canónicos (`OpenAlex`, `Europe PMC`) a
-`buscar_en_fuentes`, no los ids (`openalex`, `europepmc`).
-
-```bash
-uv run python ejemplos/resumir.py
-```
-
-Carga el `.env` por sí mismo (no pasa por la CLI) e imprime cada resumen con su
-DOI para que puedas abrirlo y comprobar si los hallazgos son fieles.
-
-## Revisión con flujo
-
-`litmar revisar "pregunta"` ejecuta un grafo de LangGraph con seis nodos. Tres
-deciden con el modelo; los otros tres son código, porque lo que se puede
-comprobar no se le delega a un modelo:
-
-```mermaid
-flowchart TD
-    START([START]) --> P["planificar · LLM"]
-    P --> B["buscar · código"]
-    B --> F["filtrar · código"]
-    F --> R["resumir_articulos · LLM × artículo"]
-    R --> S["sintetizar · LLM"]
-    S --> V["verificar_citas · código"]
-
-    V -->|"citas correctas o 2 reintentos agotados"| END([END])
-    V -->|"DOI inventado y quedan reintentos"| S
-```
-
-| Nodo | Quién decide | Qué hace |
-| --- | --- | --- |
-| `planificar` | LLM | Propone 2-3 consultas de búsqueda; el código recorta vacías y repeticiones. |
-| `buscar` | código | Busca en las fuentes y junta los resultados en una `Biblioteca` (sin duplicar DOI). |
-| `filtrar` | código | Descarta artículos sin resumen, ordena por citas y año y se queda con los N mejores. |
-| `resumir_articulos` | LLM × artículo | Usa `resumir()` para adaptar cada artículo a la pregunta. |
-| `sintetizar` | LLM | Escribe el informe citando cada afirmación como `[10.xxxx/yyy]`. |
-| `verificar_citas` | código | Extrae los DOI con una expresión regular y comprueba que estén entre los seleccionados. |
-
-Si aparece un DOI que no estaba en la lista, `verificar_citas` vuelve a
-`sintetizar` con ese feedback. Como máximo hay **dos reescrituras** (tres
-escrituras del informe): el límite está en el código, y `recursion_limit=20` es
-la red de seguridad de LangGraph. Con 6 artículos el presupuesto es
-1 + 6 + 1 + 2 = 10 llamadas, justo el límite del limitador.
-
-```bash
-uv run litmar revisar "¿Qué papel tiene la posidonia en el carbono azul?" \
-    --fuente openalex,europepmc --desde 2020 -n 6 \
-    --informe informe.md --bibtex citas.bib
-```
-
-La terminal muestra cada paso en cuanto termina:
-
-```text
-> planificar         3 consultas
-> buscar            24 artículos
-> filtrar            6 seleccionados
-> resumir_articulos  6 resúmenes
-> sintetizar         informe (5 citas)
-> verificar_citas    1 cita inválida → reescribir
-> sintetizar         informe (4 citas)
-> verificar_citas    ok (4 citas)
-Informe: informe.md
-BibTeX:  citas.bib (4 artículos)
-```
-
-`--n` (por defecto 6) es el máximo de artículos seleccionados; `filtrar` lo
-recorta a 6 aunque se pida más. `--fuente` admite los mismos ids que `buscar`.
-Si tras las dos reescrituras quedan citas inválidas, se guardan igualmente el
-informe y el BibTeX **solo de los DOI verificados**, con un aviso en `stderr`.
-
-Desde Python se puede construir el mismo grafo e inyectar el modelo y las
-fuentes; así se prueba sin clave ni red:
-
-```python
-from litmar import crear_grafo, crear_modelo
-from litmar.flujo import estado_inicial
-
-grafo = crear_grafo(crear_modelo())
-resultado = grafo.invoke(
-    estado_inicial("¿Qué papel tiene la posidonia en el carbono azul?", ["OpenAlex"]),
-    config={"recursion_limit": 20},
-)
-```
-
-## Revisión con agente (Deep Agents)
-
-`litmar revisar "pregunta" --modo agente` ejecuta un agente de Deep Agents:
-un grafo de LangGraph en el que el modelo decide cuántas búsquedas hacer y cuándo
-ha terminado. Es más flexible y más caro que el flujo; la misma pregunta se
-puede lanzar en los dos modos para compararlos.
-
-```mermaid
-flowchart TD
-    CLI["litmar revisar --modo agente"] --> T["write_todos · plan"]
-    T --> Sub["task(buscador) · contexto propio"]
-    Sub --> H["buscar_articulos / listar_fuentes"]
-    H --> Reg["RegistroBusquedas · DOI → Artículo"]
-    H -->|"--aprobar"| P["__interrupt__ · tú decides"]
-    P -->|aprobar / editar / rechazar| H
-    Reg --> V["código: extraer_citas vs DOI entregados"]
-    V --> F["informe.md + citas.bib (solo citados válidos)"]
-```
-
-**Herramientas** (`src/litmar/herramientas.py`): una sola `buscar_articulos` para
-todas las fuentes, más `listar_fuentes`. La herramienta reutiliza `crear_fuente`,
-acepta el nombre o el id de la fuente y devuelve título, año, DOI, citas y un
-resumen recortado. Los límites están en el código: **10 resultados como máximo**
-y solo las fuentes indicadas en `--fuente`. Si una fuente falla, devuelve un
-mensaje de error como texto para que el agente pueda probar otra; nunca una
-excepción ni una cabecera con claves. PANGAEA avisa de que devuelve datos, no
-artículos revisados.
-
-**Control** (`src/litmar/agente.py`): `write_todos` para planificar (viene de
-`TodoListMiddleware`, opt-in desde deepagents 0.7), un subagente `buscador` con
-su propio contexto y las mismas herramientas, y `recursion_limit=40`. El agente
-no recibe herramientas de escritura en disco ni de ejecución de código: la
-terminal guarda su respuesta final en `informe.md`.
-
-Con `--aprobar` se instala un checkpointer en memoria y `interrupt_on` para
-`buscar_articulos` (el subagente lo hereda). Antes de cada búsqueda se muestra la
-llamada y se puede responder **a** (aprobar), **e** (editar los argumentos en
-JSON) o **r** (rechazar). Sin terminal, la respuesta por defecto es rechazar.
-
-**Verificación:** al terminar, la CLI extrae los DOI del informe con
-`flujo.extraer_citas` y solo pone en `citas.bib` los que aparecen en el registro
-de herramientas. Si el agente cita un DOI inventado, se avisa por `stderr` y ese
-DOI no entra en el BibTeX. El informe incluye siempre una sección
-`## Lo que no encontré` con los huecos y las fuentes que fallaron.
-
-```bash
-uv run litmar revisar "¿Cómo afecta el calentamiento a Posidonia oceanica?" \
-    --modo agente --fuente openalex,europepmc --aprobar
-```
-
-Desde Python se puede inyectar el modelo y una fábrica de fuentes, sin clave ni
-red:
-
-```python
-from litmar import crear_modelo
-from litmar.agente import crear_agente
-
-agente, registro = crear_agente(crear_modelo(), fuentes=["OpenAlex"])
-resultado = agente.invoke(
-    {"messages": [{"role": "user", "content": "¿Qué papel tiene la posidonia?"}]},
-    config={"recursion_limit": 40},
-)
-print(resultado["messages"][-1].content)
-print(sorted(registro.articulos))  # DOI que vio el agente
-```
-
 ## Fuentes
 
 Todas las fuentes descartan los resultados a los que les falta DOI o autores,
@@ -643,8 +478,4 @@ Los tests no usan la red ni necesitan claves:
   en `tests/datos/`;
 - también cubren los modelos, la deduplicación, los reintentos, la persistencia
   y el flujo de la CLI hasta la exportación BibTeX;
-- las herramientas y el agente se prueban con modelos y fuentes falsos: límites
-  en código, errores como texto, subagente, pausa por aprobación y citas válidas;
-- el resumen estructurado, `crear_modelo()` y el ejemplo se prueban con modelos
-  y una fábrica falsos, sin clave ni red;
 - la interfaz web se prueba con `streamlit.testing` y fuentes simuladas.
