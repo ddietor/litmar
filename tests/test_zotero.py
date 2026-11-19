@@ -38,7 +38,7 @@ def test_zotero_convierte_respuesta_guardada():
     assert primero.year == 2021
     assert primero.journal == "Revista de Informática"
     assert primero.abstract == "Un estudio sobre redes neuronales."
-    assert primero.citations == 0
+    assert primero.citations is None
     assert primero.short_citation == "García y López (2021)"
     assert segundo.authors == ("Consorcio Mar",)
     assert segundo.year == 2019  # sale de la fecha en texto libre

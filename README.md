@@ -28,8 +28,9 @@ es un fichero `.env` en el directorio desde el que ejecutas `litmar`:
 cp .env.example .env    # y rellena lo que necesites
 ```
 
-Todo es opcional: sin configurar nada funcionan OpenAlex, Crossref, Europe PMC,
-arXiv y PANGAEA. `.env.example` explica cada variable:
+Para buscar todo es opcional: sin configurar nada funcionan OpenAlex, Crossref,
+Europe PMC, arXiv y PANGAEA. Para resumir con un modelo de lenguaje hacen falta
+`LITMAR_MODELO` y la clave de su proveedor. `.env.example` explica cada variable:
 
 | Variable | Fuente | Para qué |
 | --- | --- | --- |
@@ -37,6 +38,9 @@ arXiv y PANGAEA. `.env.example` explica cada variable:
 | `CROSSREF_MAILTO` | Crossref | Entrar en el *polite pool*, con límites más altos |
 | `ZOTERO_USER_ID` o `ZOTERO_GROUP_ID` | Zotero | Biblioteca en la que buscar (sin ella, Zotero no aparece) |
 | `ZOTERO_API_KEY` | Zotero | Solo para bibliotecas privadas |
+| `LITMAR_MODELO` | Modelo de lenguaje | `proveedor:modelo`, p. ej. `google_genai:…` o `anthropic:…` |
+| `GOOGLE_API_KEY` o `ANTHROPIC_API_KEY` | Modelo de lenguaje | La clave del proveedor elegido |
+| `LITMAR_LLAMADAS_POR_MINUTO` | Modelo de lenguaje | Límite de llamadas (10 por defecto, para el plan gratuito de Gemini; 0 = sin límite) |
 
 `.env` no se sube a git. Las variables que ya estén definidas en el entorno
 tienen prioridad sobre las del fichero.
@@ -55,11 +59,25 @@ Para el modelo de lenguaje se usan estas otras variables:
 uv run litmar ui
 ```
 
-Abre en el navegador una página para:
+Abre en el navegador una página con dos pestañas.
+
+**Búsqueda**:
 - escribir la búsqueda, elegir las fuentes y el número de resultados por fuente;
 - ver una tabla con año, citas, autores, título y enlace al DOI, sin duplicados
   entre fuentes;
 - descargar los resultados en BibTeX o en CSV (el CSV se abre bien en Excel).
+
+**Revisión** (lo mismo que `litmar revisar`):
+- escribir una pregunta de investigación y elegir el modo (flujo o agente), las
+  fuentes y el número de artículos;
+- ver cada paso en vivo mientras trabaja (los nodos del flujo o las llamadas del
+  agente);
+- leer el informe con los DOI citados como enlaces a doi.org y descargarlo junto
+  con el BibTeX de lo citado.
+
+Si falta `LITMAR_MODELO` o la clave de su proveedor, la pestaña dice qué línea
+añadir al `.env` y el botón «Revisar» queda desactivado. La aprobación de
+búsquedas (`--aprobar`) solo está en la terminal.
 
 Si una fuente falla, se muestra el error y se siguen viendo los resultados de las
 demás. Las opciones adicionales se pasan a Streamlit, por ejemplo
@@ -138,6 +156,131 @@ $env:OPENALEX_API_KEY = "tu-clave"
 uv run litmar buscar "bibliometrics" -n 5
 ```
 
+## Revisión de literatura con un modelo de lenguaje
+
+`litmar revisar` responde a una pregunta de investigación con un informe que
+solo cita artículos reales, y el BibTeX de lo citado. Necesita `LITMAR_MODELO` y
+la clave de su proveedor en el `.env` (ver [Configuración](#configuración)).
+
+```bash
+uv run litmar revisar "¿Cómo afecta el calentamiento a las praderas de Posidonia oceanica?"
+```
+
+```
+> planificar         3 consultas
+> buscar             50 artículos
+> resumir_articulos  M resúmenes
+> filtrar            6 seleccionados
+> sintetizar         informe (5 citas)
+> verificar_citas    ok
+Informe guardado en ejemplos/revisiones/2026-11-18_1530_como-afecta-el-calentamiento-a-las-praderas-de/revision.md.
+5 artículos citados exportados a ejemplos/revisiones/2026-11-18_1530_como-afecta-el-calentamiento-a-las-praderas-de/revision.bib.
+```
+
+Es un flujo fijo de LangGraph (`src/litmar/flujo.py`) con seis pasos. Tres usan
+el modelo y tres son código normal:
+
+```mermaid
+flowchart LR
+    START([START]) --> planificar
+    planificar["LLM · planificar<br/>Convierte la pregunta en 2-3 búsquedas"] --> buscar
+    buscar["CÓDIGO · buscar<br/>Consulta las fuentes"] --> resumir_articulos
+    resumir_articulos["LLM · resumir_articulos<br/>Puntúa la relevancia de los candidatos"] --> filtrar
+    filtrar["CÓDIGO · filtrar<br/>Selecciona los N con mejor puntuación"] --> sintetizar
+    sintetizar["LLM · sintetizar<br/>Escribe la síntesis citando por DOI"] --> verificar_citas
+    verificar_citas["CÓDIGO · verificar_citas<br/>¿Cada DOI citado está entre los seleccionados?"]
+    verificar_citas -- "citas inventadas: reescribir (máx. 2)" --> sintetizar
+    verificar_citas -- "ok" --> END([END])
+```
+
+- **Selección:** combina 70 % de relevancia (1–5) con 30 % de una puntuación
+  de citas anualizadas. Las citas se dividen por los años desde la publicación y
+  se ajustan con `1 + 4 × tasa / (1 + tasa)`, donde
+  `tasa = citas / max(1, año_actual - año_publicación + 1)`. Si no hay recuento,
+  se usa solo la relevancia.
+  La CLI avisa qué artículos seleccionados no tienen el dato. Para puntuar todos
+  los candidatos con resumen, el flujo puede hacer más llamadas al modelo que
+  el número final de artículos seleccionados.
+- **`verificar_citas`** comprueba con código que cada DOI citado está entre los
+  artículos seleccionados. Si alguno no está, el modelo reescribe la síntesis (como
+  mucho 2 veces); si después sigue habiendo DOI inventados, se sustituyen por
+  «[cita no verificada]» y se avisa. Ningún DOI sin comprobar llega al informe ni
+  al BibTeX.
+- **Dónde se guarda:** cada revisión, en su propio subdirectorio de
+  `ejemplos/revisiones/`, con la fecha, la hora y la pregunta en el nombre. Una
+  revisión nunca pisa a otra (si coincide el nombre, se añade `-2`) y una que
+  falla no deja carpeta. `ejemplos/revisiones/` está en el `.gitignore`.
+  `--informe` y `--bibtex` permiten elegir otra ruta.
+- **El informe** (`revision.md`) incluye la pregunta,
+  las búsquedas, la síntesis, las referencias (las escribe el código a partir de
+  lo citado, no el modelo) y los avisos (fuentes que fallaron, resúmenes que no
+  se pudieron hacer).
+- **El BibTeX** (`revision.bib`): solo los artículos citados.
+- **`--fuente`** (por defecto `openalex,europepmc`), **`-n`** (artículos que se
+  resumen: 6 por defecto, 10 como máximo) y **`--desde AÑO`**.
+- **Coste:** una llamada para planificar, una por artículo y de 1 a 3 para la
+  síntesis. Con el límite de 10 llamadas por minuto, en torno a minuto y medio.
+
+### Modo agente
+
+`--modo agente` responde a la misma pregunta con un agente de
+[Deep Agents](https://docs.langchain.com/oss/python/deepagents/overview): en
+lugar de pasos fijos, el modelo decide qué buscar y cuándo parar. Guarda el
+informe y el BibTeX con el mismo formato que el flujo, para poder compararlos.
+
+```bash
+uv run litmar revisar "¿Cómo afecta el calentamiento a las praderas de Posidonia oceanica?" --modo agente
+```
+
+```
+[~] Buscar efectos de olas de calor marinas en Posidonia oceanica (OpenAlex)
+[ ] Buscar efectos fisiológicos del estrés térmico (Europe PMC)
+[ ] Escribir el informe en /informe.md
+→ task(buscador): Busca en OpenAlex artículos sobre el efecto de las olas de calor…
+    · buscar_articulos(«Posidonia oceanica marine heatwave mortality», OpenAlex, n=10)
+→ write_file(informe.md)
+[x] 3/3 tareas
+```
+
+- **Qué puede hacer**: el agente principal planifica con una lista de tareas,
+  encarga las búsquedas a un subagente `buscador` y escribe el informe en un
+  fichero virtual (vive en memoria, no en el disco). El buscador solo tiene
+  `buscar_articulos` y `listar_fuentes`, limitadas a las fuentes de `--fuente`.
+  Nada escribe en el disco ni ejecuta código.
+- **Límites en el código**: 25 llamadas al modelo para el agente principal, 8
+  por encargo al buscador y 12 búsquedas en total. Si el agente llega a su
+  límite, el informe dice hasta dónde llegó (su lista de tareas).
+- **Citas comprobadas**: cada DOI citado se busca entre los artículos que
+  devolvieron las búsquedas; los demás se marcan como «[cita no verificada]».
+  El informe termina con «Lo que no se encontró».
+- **`--aprobar`**: antes de cada búsqueda, el agente se detiene y pregunta:
+  ```
+  ? ¿Buscar «posidonia warming» en Europe PMC (n=5)? [S/n/e(ditar)]
+  ```
+  `n` la rechaza (el agente lo sabe y sigue sin ella) y `e` permite cambiar la
+  consulta o la fuente.
+- **Coste y tiempo**: más llamadas que el flujo (en la prueba, 3 encargos y 9
+  búsquedas, casi 2 minutos con el límite de 10 llamadas por minuto).
+
+### Herramientas para un modelo
+
+`litmar.herramientas` ofrece las fuentes como herramientas de LangChain, para
+que un modelo (o un agente) las pida:
+
+- **`buscar_articulos(consulta, fuente, n)`**: una sola herramienta para todas
+  las fuentes. Devuelve título, año, DOI, citas y el principio del resumen.
+  Como mucho 10 resultados (límite en el código). Si la fuente falla o no
+  existe, devuelve un texto que empieza por «Error», no una excepción. Con
+  PANGAEA avisa de que son datos, no artículos.
+- **`listar_fuentes()`**: las fuentes disponibles y qué contiene cada una.
+
+```python
+from litmar.herramientas import HERRAMIENTAS, buscar_articulos
+
+print(buscar_articulos.invoke({"consulta": "posidonia carbon", "fuente": "europepmc", "n": 3}))
+modelo_con_herramientas = modelo.bind_tools(HERRAMIENTAS)
+```
+
 ## Uso desde Python
 
 ```python
@@ -157,8 +300,8 @@ recuperada.exportar_bibtex("referencias.bib")
 ```
 
 - **`Articulo`:** registro inmutable con título, autores, año, DOI, revista,
-  resumen y número de citas. El DOI se normaliza (sin `https://doi.org/`, en
-  minúsculas) y actúa como identidad.
+  resumen y número de citas, que puede ser `None` si la fuente no lo proporciona.
+  El DOI se normaliza (sin `https://doi.org/`, en minúsculas) y actúa como identidad.
 - **`Biblioteca`:** colección ordenada sin duplicados.
   - `agregar` devuelve `False` si el DOI ya estaba.
   - `obtener(doi)` admite el DOI en cualquier formato.
@@ -171,7 +314,36 @@ recuperada.exportar_bibtex("referencias.bib")
 El JSON es una lista de artículos con `title`, `authors`, `year`, `doi`,
 `journal`, `abstract` y `citations`. Conserva los caracteres Unicode y el orden
 de inserción. Al cargar, `abstract` y `citations` son opcionales y toman los
-valores `""` y `0`.
+valores `""` y `null`.
+
+### Resumen estructurado con un modelo de lenguaje
+
+`resumir(articulo, pregunta, modelo)` le pide al modelo un `ResumenArticulo`
+(objetivo, método, hallazgos, relevancia de 1 a 5 para la pregunta y
+limitaciones) con `with_structured_output`. Así la respuesta llega como un
+objeto Pydantic ya validado, no como texto. Si el artículo no tiene resumen,
+devuelve `None` sin llamar al modelo. Sirve cualquier modelo de chat de
+LangChain; `crear_modelo()` crea el que diga `LITMAR_MODELO`, con el límite de
+llamadas por minuto, y si falta algo en el `.env` lanza `ErrorDeConfiguracion`
+con un mensaje que dice qué añadir.
+
+`ejemplos/resumir.py` busca 3 artículos sobre *ocean acidification* y resume
+cada uno (`uv run python ejemplos/resumir.py`). Cambia `TEMA` y `PREGUNTA` por
+los tuyos, y `LITMAR_MODELO` en el `.env` para comparar modelos.
+
+```python
+from dotenv import load_dotenv
+
+from litmar.llm import crear_modelo
+from litmar.resumen import resumir
+
+load_dotenv()  # el comando `litmar` lo hace solo; un script propio, no
+modelo = crear_modelo()
+
+resumen = resumir(articulo, "¿Cuánto carbono almacena Posidonia?", modelo)
+if resumen:
+    print(resumen.relevance, resumen.findings)
+```
 
 ## Modelo de lenguaje
 
@@ -437,7 +609,7 @@ Zotero(group_id=7890, api_key="...")  # biblioteca de grupo privada
 - **Clave:** solo hace falta si la biblioteca no es pública. Se envía en una
   cabecera, no en la URL.
 - **Citas:** Zotero no guarda recuentos de citas, así que `citations` es
-  siempre `0`.
+  `null` («no disponible»).
 
 ### PANGAEA
 
@@ -448,7 +620,7 @@ de la Tierra y del medio ambiente. No necesita clave.
   todos los términos. Se acepta cualquier texto, incluidas comillas, barras o
   paréntesis.
 - Como un dataset no tiene revista, el campo `journal` es siempre `"PANGAEA"`.
-- `citations` es siempre `0`: PANGAEA no publica ese dato.
+- `citations` es `null` («no disponible»): PANGAEA no publica ese dato.
 - Los autores llegan como `"Apellido, Nombre"`. Las instituciones conservan su
   nombre completo.
 - También se descartan los datasets a los que les falta título o año.

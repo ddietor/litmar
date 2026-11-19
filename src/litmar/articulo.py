@@ -42,7 +42,7 @@ class Articulo:
     doi: str
     journal: str
     abstract: str = ""
-    citations: int = 0
+    citations: int | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.authors, str):
@@ -50,7 +50,9 @@ class Articulo:
         authors = tuple(a.strip() for a in self.authors if a.strip())
         if not authors:
             raise ValueError("un artículo necesita al menos un autor")
-        if self.citations < 0:
+        if self.citations is not None and type(self.citations) is not int:
+            raise TypeError("citations debe ser un entero o None")
+        if self.citations is not None and self.citations < 0:
             raise ValueError("el número de citas no puede ser negativo")
         # frozen=True impide la asignación normal; object.__setattr__ es la vía estándar.
         object.__setattr__(self, "authors", authors)

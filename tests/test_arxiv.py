@@ -86,7 +86,7 @@ def test_arxiv_converts_saved_feed():
     assert first.year == 2024
     assert first.journal == "Journal of Examples 12 (2024) 1-9"
     assert first.abstract == "A study of bibliometric maps and their limits."
-    assert first.citations == 0
+    assert first.citations is None
     assert articles[1].journal == "arXiv"
     assert articles[2].year == 1999
 

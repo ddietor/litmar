@@ -109,6 +109,7 @@ def to_article(entry: Element) -> Articulo | None:
             doi=doi,
             journal=_text(entry, f"{ARXIV}journal_ref") or "arXiv",
             abstract=_text(entry, f"{ATOM}summary"),
+            citations=None,
         )
     except ValueError:  # invalid DOI or article data
         return None

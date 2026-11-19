@@ -18,7 +18,7 @@ class Zotero(Fuente):
     nombres de usuario: el de usuario aparece en https://www.zotero.org/settings/keys
     y el de grupo en la URL del grupo. La clave solo es necesaria si la biblioteca
     no es pública; se envía en la cabecera Zotero-API-Key, no en la URL.
-    Zotero no guarda recuentos de citas, así que `citations` siempre es 0.
+    Zotero no guarda recuentos de citas, así que `citations` es None.
     """
 
     BASE_URL = "https://api.zotero.org"
@@ -92,6 +92,7 @@ def a_articulo(item: dict[str, Any]) -> Articulo | None:
             doi=doi,
             journal=datos.get("publicationTitle") or "",
             abstract=datos.get("abstractNote") or "",
+            citations=None,
         )
     except ValueError:  # p. ej. DOI con formato inesperado
         return None

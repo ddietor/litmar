@@ -272,6 +272,7 @@ def test_tabla_recorta_al_ancho(hacer_articulo):
     assert lineas[1].startswith("2021  12345  García et al.")
 
 
+<<<<<<< HEAD
 class GrafoFalso:
     """Grafo de prueba: emite los seis pasos sin modelo, fuentes ni red."""
 
@@ -522,3 +523,7 @@ def test_revisar_explica_el_error_si_falta_el_modelo(monkeypatch, capsys):
     monkeypatch.setattr("litmar.cli.crear_modelo", sin_modelo)
     assert main(["revisar", "pregunta"]) == 1
     assert "falta LITMAR_MODELO" in capsys.readouterr().err
+=======
+def test_tabla_identifica_citas_no_disponibles(hacer_articulo):
+    assert "No disponible" in tabla([hacer_articulo(citations=None)], ancho=100)
+>>>>>>> upstream/main

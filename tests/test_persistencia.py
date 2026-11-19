@@ -30,6 +30,16 @@ def test_carga_normaliza_y_elimina_duplicados(tmp_path, hacer_articulo):
     assert list(Biblioteca.cargar(ruta)) == [original]
 
 
+def test_json_conserva_citas_no_disponibles(tmp_path, hacer_articulo):
+    original = hacer_articulo(citations=None)
+    ruta = tmp_path / "biblioteca.json"
+
+    Biblioteca([original]).guardar(ruta)
+
+    assert json.loads(ruta.read_text(encoding="utf-8"))[0]["citations"] is None
+    assert list(Biblioteca.cargar(ruta)) == [original]
+
+
 @pytest.mark.parametrize("contenido", ["{", "null", "{}", "[null]", '[{"title": "Incompleto"}]'])
 def test_rechaza_documentos_invalidos(tmp_path, contenido):
     ruta = tmp_path / "invalida.json"

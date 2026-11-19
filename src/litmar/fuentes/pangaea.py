@@ -100,6 +100,7 @@ def a_articulo(resultado: dict[str, Any]) -> Articulo | None:
             doi=doi,
             journal=Pangaea.REPOSITORIO,
             abstract=(raiz.findtext("md:abstract", default="", namespaces=_NS)).strip(),
+            citations=None,
         )
     except ValueError:  # p. ej. año o DOI con formato inesperado
         return None

@@ -96,11 +96,12 @@ def a_articulo(obra: dict[str, Any]) -> Articulo | None:
         or ""
     )
     resumen = obra.get("abstractText") or ""
-    citas = obra.get("citedByCount") or 0
-    try:
-        citas = int(citas)
-    except (ValueError, TypeError):
-        citas = 0
+    citas = obra.get("citedByCount")
+    if citas is not None:
+        try:
+            citas = int(citas)
+        except (ValueError, TypeError):
+            citas = None
 
     try:
         return Articulo(
@@ -110,7 +111,7 @@ def a_articulo(obra: dict[str, Any]) -> Articulo | None:
             doi=doi,
             journal=revista.strip(),
             abstract=resumen.strip(),
-            citations=max(0, citas),
+            citations=max(0, citas) if citas is not None else None,
         )
     except ValueError:
         return None

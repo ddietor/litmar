@@ -12,6 +12,8 @@ import pytest
 from litmar.fuentes import Crossref, EuropePMC, Fuente, OpenAlex
 from litmar.fuentes.crossref import a_articulo as crossref_a_articulo
 from litmar.fuentes.crossref import limpiar_jats
+from litmar.fuentes.europepmc import a_articulo as europepmc_a_articulo
+from litmar.fuentes.openalex import a_articulo as openalex_a_articulo
 from litmar.fuentes.openalex import reconstruir_resumen
 
 DATOS = Path(__file__).parent / "datos"
@@ -239,6 +241,25 @@ def test_openalex_parametros_de_la_peticion():
     assert "authorization" not in peticion.headers
 
 
+def test_openalex_distingue_cero_de_recuento_ausente():
+    obra = {
+        "authorships": [{"author": {"display_name": "A García"}}],
+        "doi": "https://doi.org/10.1/obra",
+        "title": "Obra",
+        "publication_year": 2024,
+    }
+
+    assert openalex_a_articulo(obra).citations is None
+    assert openalex_a_articulo({**obra, "cited_by_count": 0}).citations == 0
+
+
+def test_europepmc_distingue_cero_de_recuento_ausente():
+    obra = dict(RESPUESTA_EUROPEPMC["resultList"]["result"][0])
+    obra.pop("citedByCount", None)
+
+    assert europepmc_a_articulo(obra).citations is None
+
+
 def test_openalex_envia_la_clave_en_cabecera_y_no_en_la_url():
     peticiones = []
     OpenAlex(api_key="secreta", client=cliente(RESPUESTA_OPENALEX, peticiones=peticiones)).buscar(
@@ -452,7 +473,7 @@ def test_crossref_campos_opcionales_ausentes():
     articulo = crossref_a_articulo(item)
     assert articulo.journal == ""
     assert articulo.abstract == ""
-    assert articulo.citations == 0
+    assert articulo.citations is None
 
 
 def test_limpiar_jats():

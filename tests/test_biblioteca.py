@@ -112,3 +112,12 @@ def test_csv_vacio_solo_cabecera():
     assert Biblioteca().a_csv().splitlines() == [
         "title,authors,year,doi,journal,abstract,citations"
     ]
+
+
+def test_csv_identifica_citas_no_disponibles(hacer_articulo):
+    import csv
+    import io
+
+    filas = list(csv.reader(io.StringIO(Biblioteca([hacer_articulo(citations=None)]).a_csv())))
+
+    assert filas[1][-1] == "No disponible"

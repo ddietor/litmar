@@ -87,6 +87,8 @@ class Biblioteca:
         for articulo in self:
             fila = asdict(articulo)
             fila["authors"] = "; ".join(articulo.authors)
+            if articulo.citations is None:
+                fila["citations"] = "No disponible"
             escritor.writerow(fila.values())
         return salida.getvalue()
 
@@ -134,8 +136,8 @@ class Biblioteca:
                     raise ValueError("year debe ser un entero")
                 if not isinstance(dato.get("abstract", ""), str):
                     raise ValueError("abstract debe ser texto")
-                if type(dato.get("citations", 0)) is not int:
-                    raise ValueError("citations debe ser un entero")
+                if dato.get("citations") is not None and type(dato["citations"]) is not int:
+                    raise ValueError("citations debe ser un entero o null")
                 articulos.append(Articulo(**dato))
             except (TypeError, ValueError) as exc:
                 raise ValueError(f"artículo {posicion} inválido: {exc}") from exc

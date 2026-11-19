@@ -87,7 +87,7 @@ def a_articulo(item: dict[str, Any]) -> Articulo | None:
             doi=doi,
             journal=limpiar_jats(_primero(item.get("container-title"))),
             abstract=limpiar_jats(item.get("abstract") or ""),
-            citations=item.get("is-referenced-by-count") or 0,
+            citations=item.get("is-referenced-by-count"),
         )
     except ValueError:  # p. ej. DOI con formato inesperado
         return None

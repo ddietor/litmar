@@ -4,12 +4,21 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+<<<<<<< HEAD
 import json
 import shutil
 import subprocess
 import sys
 import uuid
+=======
+import re
+import shutil
+import subprocess
+import sys
+import unicodedata
+>>>>>>> upstream/main
 from collections.abc import Iterable
+from datetime import datetime
 from pathlib import Path
 
 from langgraph.types import Command
@@ -19,6 +28,7 @@ from litmar.articulo import Articulo
 from litmar.biblioteca import Biblioteca
 from litmar.busqueda import buscar_en_fuentes
 from litmar.configuracion import FUENTES, id_fuente, nombre_fuente
+<<<<<<< HEAD
 from litmar.flujo import (
     LIMITE_RECURSION,
     biblioteca_de_citas,
@@ -27,14 +37,27 @@ from litmar.flujo import (
     extraer_citas,
 )
 from litmar.llm import crear_modelo
+=======
+from litmar.flujo import MAX_SELECCIONADOS
+>>>>>>> upstream/main
 
 ANCHO_AUTORES = 20
+# Cada `litmar revisar` guarda su informe y su BibTeX en un subdirectorio propio.
+CARPETA_REVISIONES = Path("ejemplos") / "revisiones"
+LARGO_NOMBRE = 50
 
 
 def _positivo(valor: str) -> int:
     numero = int(valor)
     if numero < 1:
         raise argparse.ArgumentTypeError("debe ser al menos 1")
+    return numero
+
+
+def _hasta_maximo(valor: str) -> int:
+    numero = _positivo(valor)
+    if numero > MAX_SELECCIONADOS:
+        raise argparse.ArgumentTypeError(f"como mucho {MAX_SELECCIONADOS}")
     return numero
 
 
@@ -96,6 +119,7 @@ def _parser() -> argparse.ArgumentParser:
 
     revisar = comandos.add_parser(
         "revisar",
+<<<<<<< HEAD
         help="Responder a una pregunta con un informe que solo cita artículos reales",
     )
     revisar.add_argument("pregunta", type=_consulta)
@@ -104,10 +128,23 @@ def _parser() -> argparse.ArgumentParser:
         choices=("flujo", "agente"),
         default="flujo",
         help="Modo de revisión: flujo (pasos fijos) o agente (decide el modelo)",
+=======
+        help="Revisión de literatura con un modelo de lenguaje: informe y BibTeX de lo citado",
+        description="Necesita LITMAR_MODELO y la clave de su proveedor en el .env.",
+    )
+    revisar.add_argument("pregunta", type=_consulta, help="La pregunta de investigación")
+    revisar.add_argument(
+        "--modo",
+        choices=["flujo", "agente"],
+        default="flujo",
+        help="flujo: pasos fijos con LangGraph (por defecto); agente: decide el modelo, "
+        "con Deep Agents",
+>>>>>>> upstream/main
     )
     revisar.add_argument(
         "--aprobar",
         action="store_true",
+<<<<<<< HEAD
         help="Pedir permiso antes de cada búsqueda (solo con --modo agente)",
     )
     revisar.add_argument(
@@ -117,6 +154,9 @@ def _parser() -> argparse.ArgumentParser:
         default=6,
         metavar="N",
         help="Máximo de artículos seleccionados (6)",
+=======
+        help="Solo con --modo agente: pedir permiso antes de cada búsqueda",
+>>>>>>> upstream/main
     )
     revisar.add_argument(
         "--fuente",
@@ -126,21 +166,45 @@ def _parser() -> argparse.ArgumentParser:
         help="Fuentes separadas por comas (openalex,europepmc)",
     )
     revisar.add_argument(
+<<<<<<< HEAD
+=======
+        "-n",
+        "--n",
+        type=_hasta_maximo,
+        default=6,
+        metavar="N",
+        help=f"Artículos que se resumen en el flujo o que elige el agente para el informe "
+        f"(6; máximo {MAX_SELECCIONADOS})",
+    )
+    revisar.add_argument(
+>>>>>>> upstream/main
         "--desde", type=int, metavar="AÑO", help="Solo artículos publicados ese año o después"
     )
     revisar.add_argument(
         "--informe",
         type=Path,
+<<<<<<< HEAD
         default=Path("informe.md"),
         metavar="ARCHIVO.md",
         help="Archivo donde guardar el informe (informe.md)",
+=======
+        metavar="ARCHIVO.md",
+        help=f"Dónde guardar el informe (por defecto, {CARPETA_REVISIONES}/<fecha_pregunta>/"
+        "revision.md)",
+>>>>>>> upstream/main
     )
     revisar.add_argument(
         "--bibtex",
         type=Path,
+<<<<<<< HEAD
         default=Path("citas.bib"),
         metavar="ARCHIVO.bib",
         help="Archivo donde guardar el BibTeX de lo citado (citas.bib)",
+=======
+        metavar="ARCHIVO.bib",
+        help=f"Dónde guardar el BibTeX de lo citado (por defecto, {CARPETA_REVISIONES}/"
+        "<fecha_pregunta>/revision.bib)",
+>>>>>>> upstream/main
     )
 
     comandos.add_parser(
@@ -157,7 +221,15 @@ def _recortar(texto: str, ancho: int) -> str:
 
 def tabla(articulos: Iterable[Articulo], ancho: int | None = None) -> str:
     """Tabla AÑO · CITAS · AUTORES · TÍTULO ajustada al ancho de la terminal."""
-    filas = [(str(a.year), str(a.citations), a.short_authors, a.title) for a in articulos]
+    filas = [
+        (
+            str(a.year),
+            str(a.citations) if a.citations is not None else "No disponible",
+            a.short_authors,
+            a.title,
+        )
+        for a in articulos
+    ]
     if not filas:
         return ""
     ancho = ancho or shutil.get_terminal_size((100, 24)).columns
@@ -212,6 +284,7 @@ def _exportar(args: argparse.Namespace) -> int:
     return 0
 
 
+<<<<<<< HEAD
 def _texto(contenido: object) -> str:
     """Extrae el texto de un mensaje, tanto si es str como una lista de bloques."""
     if isinstance(contenido, str):
@@ -297,10 +370,107 @@ def _revisar_agente(args: argparse.Namespace) -> int:
     """Ejecuta el agente, atiende las aprobaciones y guarda informe y BibTeX."""
     agente, registro = crear_agente(
         crear_modelo(),
+=======
+def nombre_carpeta(pregunta: str, ahora: datetime) -> str:
+    """«2026-11-18_1530_como-afecta-el-calentamiento-a-las-praderas»: fecha, hora y pregunta.
+
+    Sin acentos ni signos, en minúsculas y recortado a `LARGO_NOMBRE` caracteres
+    sin partir palabras, para que sirva como nombre de carpeta en cualquier sistema.
+    """
+    ascii_ = unicodedata.normalize("NFKD", pregunta).encode("ascii", "ignore").decode()
+    palabras = re.findall(r"[a-z0-9]+", ascii_.lower())
+    resumen = ""
+    for palabra in palabras:
+        siguiente = f"{resumen}-{palabra}" if resumen else palabra
+        if len(siguiente) > LARGO_NOMBRE:
+            break
+        resumen = siguiente
+    resumen = resumen or (palabras[0][:LARGO_NOMBRE] if palabras else "revision")
+    return f"{ahora:%Y-%m-%d_%H%M}_{resumen}"
+
+
+def carpeta_revision(
+    pregunta: str, base: Path = CARPETA_REVISIONES, ahora: datetime | None = None
+) -> Path:
+    """Subdirectorio nuevo para una revisión; si ya existe, añade -2, -3…"""
+    nombre = nombre_carpeta(pregunta, ahora or datetime.now())
+    carpeta = base / nombre
+    numero = 2
+    while carpeta.exists():
+        carpeta = base / f"{nombre}-{numero}"
+        numero += 1
+    return carpeta
+
+
+def _revisar(args: argparse.Namespace) -> int:
+    # LangChain y los paquetes de los proveedores tardan en importarse: solo se cargan
+    # para este comando, no para `buscar` o `exportar`.
+    from litmar import flujo
+    from litmar.llm import ErrorDeConfiguracion, crear_modelo
+
+    if args.aprobar and args.modo != "agente":
+        raise ValueError("--aprobar solo se usa con --modo agente")
+    if args.informe and args.bibtex and args.informe.resolve() == args.bibtex.resolve():
+        raise ValueError("el informe y el BibTeX deben ser archivos distintos")
+    try:
+        modelo = crear_modelo()
+    except ErrorDeConfiguracion as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        estado = _con_agente(args, modelo) if args.modo == "agente" else _con_flujo(args, modelo)
+    except Exception as exc:  # p. ej. un 429 del proveedor o una respuesta que no se entiende
+        print(f"Error del modelo: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
+    for aviso in estado.get("warnings", []) if args.modo == "agente" else []:
+        print(f"  Aviso: {aviso}", file=sys.stderr)
+
+    # La carpeta se crea al final: una revisión que falla no deja carpetas vacías.
+    informe, bibtex = args.informe, args.bibtex
+    if informe is None or bibtex is None:
+        carpeta = carpeta_revision(args.pregunta)
+        carpeta.mkdir(parents=True)
+        informe = informe or carpeta / "revision.md"
+        bibtex = bibtex or carpeta / "revision.bib"
+    informe.write_text(flujo.informe_markdown(estado), encoding="utf-8")
+    referencias = flujo.citados(estado)
+    referencias.exportar_bibtex(bibtex)
+    print(f"Informe guardado en {informe}.")
+    print(f"{len(referencias)} artículos citados exportados a {bibtex}.")
+    return 0
+
+
+def _mostrar(linea: str) -> None:
+    print(linea, flush=True)
+
+
+def _con_flujo(args: argparse.Namespace, modelo):
+    from litmar import flujo
+
+    return flujo.revisar(
+        modelo,
+        args.pregunta,
+        fuentes=args.fuente,
+        n=args.n,
+        desde=args.desde,
+        mostrar=_mostrar,
+        avisar=lambda aviso: print(aviso, file=sys.stderr),
+    )
+
+
+def _con_agente(args: argparse.Namespace, modelo):
+    from litmar import agente
+
+    return agente.revisar(
+        modelo,
+        args.pregunta,
+>>>>>>> upstream/main
         fuentes=args.fuente,
         n=args.n,
         desde=args.desde,
         aprobar=args.aprobar,
+<<<<<<< HEAD
     )
     config = {"configurable": {"thread_id": uuid.uuid4().hex}, "recursion_limit": LIMITE_PASOS}
     entrada = {"messages": [{"role": "user", "content": args.pregunta}]}
@@ -393,6 +563,33 @@ def _revisar(args: argparse.Namespace) -> int:
         print("Error: --aprobar solo se usa con --modo agente.", file=sys.stderr)
         return 1
     return _revisar_agente(args) if args.modo == "agente" else _revisar_flujo(args)
+=======
+        mostrar=_mostrar,
+        decidir=_decidir,
+    )
+
+
+def _decidir(accion: dict) -> dict:
+    """Pregunta en la terminal si se aprueba una búsqueda: sí, no o editar."""
+    argumentos = dict(accion["args"])
+    descripcion = (
+        f"«{argumentos.get('consulta', '')}» en {argumentos.get('fuente', 'OpenAlex')} "
+        f"(n={argumentos.get('n', 5)})"
+    )
+    try:
+        respuesta = input(f"? ¿Buscar {descripcion}? [S/n/e(ditar)] ").strip().lower()
+        if respuesta in ("n", "no"):
+            return {"type": "reject", "message": "La persona no ha aprobado esta búsqueda."}
+        if respuesta in ("e", "editar"):
+            for clave in ("consulta", "fuente"):
+                nuevo = input(f"  {clave} [{argumentos.get(clave, '')}]: ").strip()
+                if nuevo:
+                    argumentos[clave] = nuevo
+            return {"type": "edit", "edited_action": {"name": accion["name"], "args": argumentos}}
+    except EOFError:  # sin terminal interactiva: no se busca nada sin permiso
+        return {"type": "reject", "message": "No se pudo pedir aprobación."}
+    return {"type": "approve"}
+>>>>>>> upstream/main
 
 
 def _lanzar_ui(opciones: list[str]) -> int:

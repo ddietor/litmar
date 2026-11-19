@@ -17,3 +17,6 @@ wheels/
 
 # Configuración personal de Claude Code (no se comparte)
 .claude/settings.local.json
+
+# Resultados de `litmar revisar` (cada alumno tiene los suyos)
+ejemplos/revisiones/

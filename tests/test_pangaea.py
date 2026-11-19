@@ -55,7 +55,7 @@ def test_pangaea_convierte_respuesta_guardada():
     assert primero.year == 2018
     assert primero.journal == "PANGAEA"
     assert primero.abstract.startswith("Decades of research have demonstrated")
-    assert primero.citations == 0
+    assert primero.citations is None
     assert primero.short_citation == "Barner et al. (2018)"
 
 

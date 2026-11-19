@@ -62,6 +62,12 @@ def test_citas_negativas_da_error(hacer_articulo):
         hacer_articulo(citations=-1)
 
 
+def test_citas_no_disponibles_y_tipo_invalido(hacer_articulo):
+    assert hacer_articulo(citations=None).citations is None
+    with pytest.raises(TypeError, match="citations"):
+        hacer_articulo(citations="muchas")
+
+
 def test_es_inmutable(hacer_articulo):
     articulo = hacer_articulo()
     with pytest.raises(dataclasses.FrozenInstanceError):

@@ -123,10 +123,22 @@ del Mar, tres clases, imparte Roberto Bada). Las diapositivas están en `docs/`
     solo cita artículos reales, más el BibTeX de lo citado». El plan detallado,
     con los prompts y lo que se comprueba, está en `PROGRESS.md` («Plan de la
     Clase 2»).
-  - Clase 3 · *Se comparte* (previsiblemente 19/11/2026: «mañana» en la última
-    diapositiva de la Clase 2): exponer `buscar` y `revisar` con FastAPI y
-    empaquetar con Docker. Aún no hay diapositivas: cuando aparezcan en `docs/`,
-    léelas antes de empezar y vuelca lo relevante aquí y en `PROGRESS.md`.
+  - Clase 3 · *APIs, reproducibilidad y transferencia* (19/11/2026,
+    `docs/Clase3.pdf`, 35 diapositivas): tu propia API con FastAPI (rutas,
+    parámetros, modelos de entrada y salida, validación, documentación
+    automática), una web en HTML y JavaScript que usa esa API, Docker (imágenes,
+    contenedores, capas), reproducibilidad (variables de entorno, compose,
+    desarrollo dentro del contenedor) y cierre. El plan detallado, con los
+    prompts y lo que se comprueba, está en `PROGRESS.md` («Plan de la Clase 3»).
+  - **Principios de la Clase 3**: primero el contrato (rutas, parámetros,
+    modelos de entrada y salida, códigos de error), luego el código; la API es
+    un punto de entrada más, como la CLI y la UI, y reutiliza
+    `buscar_en_fuentes`, `flujo.revisar` y `agente.revisar` sin duplicar lógica;
+    errores con código y mensaje claro, nunca con claves; tests con `TestClient`,
+    sin red; la web solo conoce el contrato y usa rutas relativas; en Docker,
+    dependencias desde `uv.lock` antes del código, sin grupo `dev`, usuario no
+    root y secretos solo al arrancar (`--env-file`, `env_file:`), nunca en la
+    imagen (`.dockerignore`).
   - **Principios de la Clase 2** que el código debe respetar: lo que se pueda
     hacer o verificar con código no se le deja al modelo (p. ej. comprobar que
     cada DOI citado está entre los seleccionados); flujo antes que agente; límites
@@ -144,15 +156,25 @@ del Mar, tres clases, imparte Roberto Bada). Las diapositivas están en `docs/`
 
 ```bash
 uv sync                          # instala todo, incluido el grupo dev (pytest, ruff, streamlit)
+<<<<<<< HEAD
 uv run pytest                    # tests (sin red; 265; de 3 a 45 s según caché de imports)
+=======
+uv run pytest                    # tests (sin red; ~299, ~2 s)
+>>>>>>> upstream/main
 uv run ruff check --fix          # lint (reglas E, W, F, I, UP, B; línea de 100)
 uv run ruff format               # formato
 uv run litmar --help             # CLI
 uv run litmar buscar "posidonia carbon" --fuente openalex,europepmc --desde 2020 --bibtex refs.bib
 uv run litmar buscar "consulta" -n 10 --guardar biblioteca.json
 uv run litmar exportar biblioteca.json --bibtex refs.bib
+<<<<<<< HEAD
 uv run litmar revisar "¿Qué papel tiene la posidonia en el carbono azul?"  # informe + BibTeX citado
 uv run litmar revisar "pregunta" --modo agente --aprobar  # agente, pausa antes de buscar
+=======
+uv run litmar revisar "pregunta" --modo agente --aprobar   # agente; pide permiso antes de buscar
+uv run litmar revisar "pregunta"  # revisión con LLM (necesita LITMAR_MODELO): informe y BibTeX
+                                 # en ejemplos/revisiones/<fecha_hora_pregunta>/ (ignorado en git)
+>>>>>>> upstream/main
 uv run litmar ui                 # interfaz web (Streamlit)
 uv run litmar ui --server.headless true --server.port 8599   # sin navegador ni preguntas
 ```
@@ -169,11 +191,14 @@ src/litmar/
                      `litmar`: carga .env (python-dotenv) y llama a cli.main()
   __main__.py        `python -m litmar`
   articulo.py        Articulo (dataclass frozen+slots), normalizar_doi, apellido
+  seleccion.py       puntuación compartida: relevancia y citas anualizadas
   biblioteca.py      Biblioteca: dedup por DOI, a_bibtex/exportar_bibtex, a_csv,
                      guardar/cargar JSON (guardado atómico, carga con validación)
   busqueda.py        buscar_en_fuentes(): busca en varias fuentes, junta sin
-                     duplicar y recoge errores por fuente. La usan CLI y UI
+                     duplicar y recoge errores por fuente. La usan CLI y UI.
+                     mensaje_de_error(): error de una fuente sin la petición
   cli.py             argparse: buscar (--fuente, --desde, --guardar, --bibtex,
+<<<<<<< HEAD
                      salida en tabla), exportar, revisar (flujo o agente;
                      informe y BibTeX de lo citado), ui
   agente.py          crear_agente(modelo, crear=..., aprobar=...): Deep Agents
@@ -193,11 +218,40 @@ src/litmar/
   resumen.py         ResumenArticulo (Pydantic) y resumir(articulo, pregunta,
                      modelo) con with_structured_output; sin resumen → None
   ui.py              Streamlit: filas(), app()
+=======
+                     salida en tabla), exportar, revisar (--modo flujo|agente,
+                     --aprobar), ui
+  configuracion.py   FUENTES, fuentes_disponibles(), crear_fuente(nombre),
+                     id_fuente()/nombre_fuente() («Europe PMC» ↔ «europepmc»)
+  agente.py          agente revisor (Deep Agents): crear_agente(), Registro de lo
+                     que devuelven las búsquedas, Narrador (líneas del stream),
+                     ejecutar() (stream + aprobaciones), revisar() (crear +
+                     ejecutar + estado_final; la usan CLI, UI y tests),
+                     estado_final() con citas comprobadas;
+                     MAX_PASOS/MAX_PASOS_BUSCADOR/MAX_BUSQUEDAS
+  flujo.py           grafo LangGraph de revisión: EstadoRevision, crear_flujo(),
+                     revisar() (ejecuta y avisa de cada paso con `mostrar`),
+                     describir_paso(), informe_markdown(), enlazar_dois(),
+                     citados(); límites
+                     MAX_CONSULTAS/MAX_SELECCIONADOS/MAX_REESCRITURAS
+  herramientas.py    @tool buscar_articulos(consulta, fuente, n) y listar_fuentes();
+                     MAX_RESULTADOS = 10; errores como texto; HERRAMIENTAS
+  llm.py             crear_modelo(): LITMAR_MODELO → init_chat_model, con
+                     InMemoryRateLimiter y ErrorDeConfiguracion si falta algo
+  resumen.py         ResumenArticulo (Pydantic) y resumir(articulo, pregunta, modelo)
+                     con with_structured_output; sin resumen → None, sin llamar al modelo
+  ui.py              Streamlit: filas(), app() con pestañas busqueda() y revision();
+                     la revisión reutiliza flujo.revisar / agente.revisar
+>>>>>>> upstream/main
   fuentes/
     base.py          Fuente (ABC): buscar(consulta, n, *, desde=None) abstracto;
                      _admite (validez + año); _get/_get_json con reintentos
     openalex.py crossref.py europepmc.py arxiv.py pangaea.py zotero.py
-docs/                diapositivas del curso (PDF)
+docs/                diapositivas del curso (PDF) y flujo.md (diagrama del grafo;
+                     un test comprueba que el Mermaid generado está al día)
+ejemplos/
+  resumir.py         Práctica 1 de la Clase 2: busca 3 artículos y los resume
+  revisiones/        salidas de `litmar revisar`, una carpeta por ejecución (en .gitignore)
 tests/
   conftest.py        fixture hacer_articulo (fábrica de Articulo válidos)
   test_*.py          uno por módulo/fuente; test_ui.py usa streamlit.testing
@@ -207,7 +261,8 @@ tests/
 ## 5. Modelo y reglas del dominio
 
 - **`Articulo`**: `title, authors (tuple), year, doi, journal, abstract="",
-  citations=0`. Inmutable. El DOI se normaliza (sin `https://doi.org/` ni
+  citations=None`. Inmutable. `citations=None` significa que la fuente no da
+  el recuento; `0` significa que sí lo da y es cero. El DOI se normaliza (sin `https://doi.org/` ni
   `doi:`, minúsculas, debe empezar por `10.` y tener `/`) y es la **identidad**.
   DOI y al menos un autor son obligatorios: las fuentes **descartan** resultados
   sin ellos. `short_citation` → «García (2021)», «García y López (2021)»,
@@ -237,9 +292,9 @@ errores de red, 429 y 5xx, con espera exponencial (`backoff`), `Retry-After`
 | OpenAlex | `OpenAlex` | `OPENALEX_API_KEY` opcional (Bearer) | `per_page` ≤ 100; `page × per_page` ≤ 10 000; el resumen se reconstruye de `abstract_inverted_index`. `desde`: `filter=publication_year:>AÑO-1` |
 | Crossref | `Crossref` | `CROSSREF_MAILTO` opcional (polite pool) | solo `journal-article`; paginación por cursor con orden explícito. `desde`: `from-pub-date:AÑO` |
 | Europe PMC | `EuropePMC` | ninguna | paginación `cursorMark`; por defecto da prioridad a lo reciente. `desde`: `AND (PUB_YEAR:[AÑO TO 9999])` |
-| arXiv | `Arxiv` | ninguna | Atom XML; 3 s entre páginas; DOI de respaldo `10.48550/arXiv.<id>`. `desde`: `submittedDate:[AÑO01010000 TO …]` |
-| PANGAEA | `Pangaea` | ninguna | datasets; `journal="PANGAEA"`, `citations=0`; Elasticsearch ≤ 10 000. `desde`: `range` sobre `agg-pubYear` |
-| Zotero | `Zotero` | `ZOTERO_USER_ID` **o** `ZOTERO_GROUP_ID` (+ `ZOTERO_API_KEY` si es privada) | `citations=0`; sin id no aparece en la UI. `desde`: la API no filtra, solo `_admite` |
+| arXiv | `Arxiv` | ninguna | Atom XML; 3 s entre páginas; DOI de respaldo `10.48550/arXiv.<id>`; citas no disponibles. `desde`: `submittedDate:[AÑO01010000 TO …]` |
+| PANGAEA | `Pangaea` | ninguna | datasets; `journal="PANGAEA"`, citas no disponibles; Elasticsearch ≤ 10 000. `desde`: `range` sobre `agg-pubYear` |
+| Zotero | `Zotero` | `ZOTERO_USER_ID` **o** `ZOTERO_GROUP_ID` (+ `ZOTERO_API_KEY` si es privada) | citas no disponibles; sin id no aparece en la UI. `desde`: la API no filtra, solo `_admite` |
 
 Las variables están documentadas en `.env.example`. **Para añadir una fuente**:
 subclase de `Fuente` en `fuentes/` (con `desde` y `_admite`), exportarla en
@@ -312,6 +367,43 @@ en `.env.example`.
   a `crear_modelo(entorno)`.
 - **`ruff format` también formatea los bloques de Python del README** (alinea
   distinto los comentarios). Es normal ver el README en el diff tras formatear.
+- **Salida estructurada con Claude**: `with_structured_output` de
+  `langchain-anthropic` usa por defecto `function_calling` (forzar una
+  herramienta), que avisa y puede fallar en `claude-sonnet-5-5`. Pasa siempre
+  `method="json_schema"`: lo admiten Anthropic y Gemini (en Gemini es el valor
+  por defecto). Los modelos falsos de los tests aceptan `**opciones`.
+- **`load_dotenv()` sin ruta falla con `python - <<EOF`** (stdin): `find_dotenv`
+  necesita un fichero de script. En pruebas rápidas usa `load_dotenv(".env")`.
+- **Docstrings de `@tool`**: con `parse_docstring=True` (formato Google) la
+  primera línea, el resto y cada `Args` se convierten en la descripción que lee
+  el modelo; sin él, la descripción conserva la sangría del docstring.
+- **Deep Agents (0.7)**: `write_todos` ya no viene por defecto (hay que pasar
+  `TodoListMiddleware`); las herramientas de ficheros se recortan pasando
+  `FilesystemMiddleware(backend=…, tools=[…])` en `middleware` (en el principal y
+  en el `middleware` del subagente; `read_file` es obligatoria); `task` ofrece
+  siempre un subagente `general-purpose` con las herramientas del principal
+  (quitarlo exige `register_harness_profile` por modelo, global). El informe
+  queda en `state["files"]["/informe.md"]["content"]`.
+- **Interrupciones de un subagente** (`interrupt_on` heredado): llegan dos veces
+  al stream con `subgraphs=True` (en su espacio y en el principal); se atiende
+  la del principal. Puede haber **varias pendientes a la vez** (el agente lanza
+  buscadores en paralelo): hay que contestar a todas y reanudar con un mapa
+  `Command(resume={interrupcion.id: {"decisions": [...]}, ...})`; sin ids,
+  LangGraph falla con «multiple pending interrupts». Mismo `thread_id`, hace
+  falta checkpointer y no se repiten llamadas al modelo.
+- **`ModelCallLimitMiddleware(exit_behavior="end")`** añade su mensaje («Model
+  call limits exceeded…») desde el nodo `ModelCallLimitMiddleware.before_model`,
+  no desde `model`. Con aprobaciones cada reanudación es un *run* nuevo: para el
+  principal se usa `thread_limit`.
+- **Modelos falsos para agentes**: un `BaseChatModel` con `_generate` que saca
+  mensajes de un guion y `bind_tools` que devuelve un envoltorio (ver
+  `tests/test_agente.py`). El principal y el subagente comparten el guion.
+- **Streamlit: la `key` de un formulario no puede ser también una clave de
+  `st.session_state`** (`StreamlitWidgetAlreadyInstantiatedError`). Por eso el
+  formulario es `"revision"` y el resultado, `resultado_revision`.
+- **`AppTest`**: `st.status(...)` y sus `.text()` aparecen en `app.text`; las
+  pestañas no cambian el orden de los widgets (los de «Búsqueda» van primero:
+  `multiselect[0]`, los de «Revisión», `multiselect[1]`).
 - **`Retry-After: 0`** es válido: comprobar con `is None`, no con `or`.
 - **`Biblioteca.guardar`** deja el JSON con permisos `0600` (lo crea
   `NamedTemporaryFile`). Conocido, pendiente.

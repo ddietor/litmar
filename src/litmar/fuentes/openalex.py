@@ -78,7 +78,7 @@ def a_articulo(obra: dict[str, Any]) -> Articulo | None:
             doi=doi,
             journal=revista or "",
             abstract=reconstruir_resumen(obra.get("abstract_inverted_index")),
-            citations=obra.get("cited_by_count") or 0,
+            citations=obra.get("cited_by_count"),
         )
     except ValueError:  # p. ej. DOI con formato inesperado
         return None
